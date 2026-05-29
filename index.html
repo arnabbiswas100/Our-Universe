@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Our Universe</title>
+  <meta name="description" content="A universe of memories, built with love." />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+</head>
+<body>
+  <!-- Animated Space Background (Canvas) -->
+  <canvas id="space-bg"></canvas>
+
+  <!-- Loading Screen -->
+  <div id="loading-screen">
+    <div class="loading-content">
+      <div class="loading-planet">
+        <div class="loading-planet-body"></div>
+        <div class="loading-planet-ring"></div>
+      </div>
+      <div id="loading-progress-track">
+        <div id="loading-progress"></div>
+      </div>
+      <div id="loading-message">Gathering stardust...</div>
+    </div>
+  </div>
+
+  <!-- Landing Screen -->
+  <div id="landing-screen" style="display: none;">
+    <div class="landing-stars"></div>
+    <h1 class="landing-title">Our Universe</h1>
+    <p class="landing-subtitle">Every star holds a story. Every planet holds a truth.</p>
+    <p class="landing-dedication">For the one who became my universe.</p>
+    <button class="landing-begin" id="begin-btn">
+      <span class="btn-text">Begin</span>
+      <span class="btn-sparkle">✦</span>
+    </button>
+  </div>
+
+  <!-- Era Map (Level 1) -->
+  <div id="era-map" style="display: none;">
+    <svg id="era-paths" class="map-paths"></svg>
+    <div id="era-nodes" class="map-nodes"></div>
+  </div>
+
+  <!-- Planet Map (Level 2) -->
+  <div id="planet-map" style="display: none;">
+    <svg id="planet-paths" class="map-paths"></svg>
+    <div id="planet-nodes" class="map-nodes"></div>
+  </div>
+
+  <!-- Story Overlay -->
+  <div id="story-overlay" style="display: none;"></div>
+
+  <!-- Navigation UI -->
+  <div id="nav-ui" style="display: none;">
+    <button id="nav-back">
+      <span class="nav-back-arrow">◀</span>
+      <span class="nav-back-text">Back</span>
+    </button>
+    <span id="nav-location"></span>
+    <button id="nav-mute">🔊</button>
+  </div>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
