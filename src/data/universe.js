@@ -9,7 +9,7 @@ export const UNIVERSE = {
 
   // Global audio
   globalAudio: {
-    galaxyAmbient: 'Audio Music/Overall.mp3',
+    galaxyAmbient: '/audio/overall.mp3',
   },
 
   eras: [
@@ -51,7 +51,7 @@ export const UNIVERSE = {
       // Planet gradient for 2D display
       planetGradient: ['#FF9D4D', '#FFD700', '#FF6B00'],
 
-      soundtrack: 'Audio Music/ERA 1.mp3',
+      soundtrack: '/audio/era1.mp3',
 
       symbolism: {
         primary: 'paper-planes',
