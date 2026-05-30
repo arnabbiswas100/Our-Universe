@@ -49,6 +49,42 @@ html, body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* ─── Global Glass Frame ─── */
+#global-glass-frame {
+  position: fixed;
+  inset: 0;
+  z-index: 15;
+  pointer-events: none;
+  overflow: hidden; /* Prevents the off-screen elements from causing issues */
+}
+
+#global-glass-frame::before {
+  content: '';
+  position: absolute;
+  /* Push the element way off-screen so the outer rounded corners are invisible */
+  inset: -50px; 
+  /* Total padding = 50px off-screen + 12px visible frame = 62px */
+  padding: 62px;
+  /* Outer radius = 62px padding + 20px desired inner radius = 82px */
+  border-radius: 82px;
+  background: linear-gradient(135deg, rgba(123, 94, 255, 0.25), rgba(123, 94, 255, 0.15));
+  
+  /* Punch out the center hole (which automatically gets the 20px inner radius) */
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+}
+
+#global-glass-frame::after {
+  content: '';
+  position: absolute;
+  /* Position exactly at the inner edge of the 12px frame */
+  inset: 12px;
+  border-radius: 20px; /* Perfectly matches the inner radius of the mask */
+  border: 1.5px solid rgba(123, 94, 255, 0.4);
+  box-shadow: inset 0 0 25px rgba(123, 94, 255, 0.15); /* Inner glow */
+}
+
 /* ─── Canvas Background ─── */
 #space-bg {
   position: fixed;
@@ -768,11 +804,130 @@ html, body {
   color: var(--text-dim);
 }
 
+/* ── Space Station Monitor (bottom-left) ── */
+.bh-monitor-wrap {
+  position: fixed;
+  bottom: 20px;
+  left: 20px;
+  z-index: 20;
+  pointer-events: auto;
+  cursor: default;
+  animation: bh-monitor-fadein 1s ease-out 0.5s both;
+}
+
+@keyframes bh-monitor-fadein {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.bh-monitor {
+  width: 190px;
+  background: rgba(8, 10, 30, 0.8);
+  border: 1px solid rgba(123, 94, 255, 0.25);
+  border-radius: 10px;
+  overflow: hidden;
+  backdrop-filter: blur(6px);
+  box-shadow:
+    0 4px 20px rgba(0, 0, 0, 0.5),
+    0 0 30px rgba(123, 94, 255, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+  transform: translateY(0) scale(1);
+}
+
+.bh-monitor:hover {
+  transform: translateY(-4px) scale(1.03);
+  box-shadow:
+    0 10px 25px rgba(0, 0, 0, 0.6),
+    0 0 45px rgba(167, 139, 250, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.15);
+  border-color: rgba(167, 139, 250, 0.6);
+}
+
+.bh-monitor-header {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 10px;
+  background: rgba(20, 22, 50, 0.6);
+  border-bottom: 1px solid rgba(123, 94, 255, 0.15);
+}
+
+.bh-monitor-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+
+.bh-dot-red { background: #ff5f57; }
+.bh-dot-yellow { background: #febc2e; }
+.bh-dot-green { background: #28c840; }
+
+.bh-monitor-title {
+  font-family: var(--font-display);
+  font-size: 0.55rem;
+  font-weight: 700;
+  color: rgba(200, 190, 255, 0.5);
+  letter-spacing: 0.12em;
+  margin-left: auto;
+}
+
+.bh-monitor-body {
+  padding: 10px 12px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.bh-monitor-time {
+  font-family: 'Courier New', monospace;
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #A78BFA;
+  letter-spacing: 0.08em;
+  text-shadow: 0 0 12px rgba(167, 139, 250, 0.5);
+  line-height: 1;
+}
+
+.bh-monitor-date {
+  font-family: var(--font-display);
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: rgba(200, 190, 255, 0.7);
+  letter-spacing: 0.05em;
+}
+
+.bh-monitor-day {
+  font-family: var(--font-display);
+  font-size: 0.6rem;
+  font-weight: 700;
+  color: #FF2A93;
+  letter-spacing: 0.15em;
+  margin-bottom: 6px;
+}
+
+.bh-monitor-graph-label {
+  font-family: var(--font-display);
+  font-size: 0.45rem;
+  font-weight: 600;
+  color: rgba(200, 190, 255, 0.35);
+  letter-spacing: 0.15em;
+  margin-bottom: 2px;
+}
+
+.bh-monitor-graph {
+  width: 100%;
+  height: 40px;
+  border-radius: 4px;
+  background: rgba(15, 17, 40, 0.5);
+  border: 1px solid rgba(123, 94, 255, 0.1);
+}
+
 /* ── Welcome Astronaut ── */
 .bh-astronaut-wrap {
   position: fixed;
   bottom: 0;
-  right: 0;
+  right: 12px; /* Moved left to accommodate the frame */
   width: 280px;
   height: 320px;
   pointer-events: none;
@@ -788,7 +943,14 @@ html, body {
   flex-direction: column;
   align-items: flex-end;
   animation: bh-float 4s ease-in-out infinite;
-  filter: drop-shadow(0 0 12px rgba(100, 180, 255, 0.3));
+  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+  transform: scale(1);
+  filter: drop-shadow(0 0 0 transparent);
+}
+
+.bh-astronaut-wrap:hover .bh-astronaut {
+  transform: scale(1.03);
+  filter: drop-shadow(0 0 25px rgba(167, 139, 250, 0.8));
 }
 
 @keyframes bh-float {
@@ -1367,11 +1529,25 @@ html, body {
 
 #nav-location {
   font-family: var(--font-display);
+  font-size: 2.2rem;
+  font-weight: 900;
+  color: var(--text-white);
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.6), 0 0 20px rgba(123, 94, 255, 0.5);
+  letter-spacing: 0.05em;
+  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+  cursor: default;
+  transform-origin: left center;
+}
+
+#nav-location:not(.nav-title-sub):hover {
+  transform: translateY(-3px) scale(1.03);
+  text-shadow: 0 10px 25px rgba(0, 0, 0, 0.8), 0 0 45px rgba(167, 139, 250, 0.8);
+}
+
+#nav-location.nav-title-sub {
   font-size: 0.9rem;
   font-weight: 600;
-  color: var(--text-white);
   text-shadow: 0 2px 8px rgba(0, 0, 0, 0.6), 0 0 20px rgba(123, 94, 255, 0.3);
-  letter-spacing: 0.05em;
 }
 
 #nav-mute {

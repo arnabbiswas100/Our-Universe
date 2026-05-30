@@ -27,6 +27,13 @@ export class NavigationUI {
   show(location, showBack = true) {
     this.locationLabel.textContent = location;
     this.backBtn.style.display = showBack ? 'flex' : 'none';
+    
+    if (showBack) {
+      this.locationLabel.classList.add('nav-title-sub');
+    } else {
+      this.locationLabel.classList.remove('nav-title-sub');
+    }
+
     this.container.style.display = 'flex';
     gsap.fromTo(this.container,
       { opacity: 0, y: -15 },

@@ -123,6 +123,13 @@ export class EraMap {
     
     this.nodesContainer.appendChild(astronautWrap);
 
+    // ── Space Station Monitor (bottom-left) ──
+    const monitor = document.createElement('div');
+    monitor.className = 'bh-monitor-wrap';
+    monitor.innerHTML = this._createMonitorHTML();
+    this.nodesContainer.appendChild(monitor);
+    this._startMonitor(monitor);
+
     // ── Orbit Rings & Era Stars ──
     eras.forEach((era, i) => {
       const orbitRadius = baseOrbit + i * orbitStep;
@@ -442,8 +449,89 @@ export class EraMap {
     return `rgb(${r}, ${g}, ${b})`;
   }
 
+  _createMonitorHTML() {
+    return `
+      <div class="bh-monitor">
+        <div class="bh-monitor-header">
+          <span class="bh-monitor-dot bh-dot-red"></span>
+          <span class="bh-monitor-dot bh-dot-yellow"></span>
+          <span class="bh-monitor-dot bh-dot-green"></span>
+          <span class="bh-monitor-title">STATION MONITOR</span>
+        </div>
+        <div class="bh-monitor-body">
+          <div class="bh-monitor-time" id="bh-clock">--:--:--</div>
+          <div class="bh-monitor-date" id="bh-date">--- --- --</div>
+          <div class="bh-monitor-day" id="bh-day">------</div>
+          <div class="bh-monitor-graph-label">SYSTEM ACTIVITY</div>
+          <svg class="bh-monitor-graph" id="bh-graph" viewBox="0 0 160 40" preserveAspectRatio="none">
+            <path id="bh-graph-line" fill="none" stroke="#FF2A93" stroke-width="1.5"
+              stroke-linejoin="round" stroke-linecap="round" d="" />
+            <path id="bh-graph-fill" fill="url(#bh-graph-grad)" stroke="none" d="" />
+            <defs>
+              <linearGradient id="bh-graph-grad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="rgba(255,42,147,0.3)"/>
+                <stop offset="100%" stop-color="rgba(255,42,147,0)"/>
+              </linearGradient>
+            </defs>
+          </svg>
+        </div>
+      </div>
+    `;
+  }
+
+  _startMonitor(monitorEl) {
+    this._graphData = [];
+    for (let i = 0; i < 20; i++) this._graphData.push(15 + Math.random() * 20);
+
+    const update = () => {
+      const now = new Date();
+      const clock = monitorEl.querySelector('#bh-clock');
+      const dateEl = monitorEl.querySelector('#bh-date');
+      const dayEl = monitorEl.querySelector('#bh-day');
+      const graphLine = monitorEl.querySelector('#bh-graph-line');
+      const graphFill = monitorEl.querySelector('#bh-graph-fill');
+
+      if (clock) clock.textContent = now.toLocaleTimeString('en-US', { hour12: false });
+      if (dateEl) dateEl.textContent = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+      if (dayEl) dayEl.textContent = now.toLocaleDateString('en-US', { weekday: 'long' }).toUpperCase();
+
+      // Push new random data point
+      this._graphData.push(5 + Math.random() * 30);
+      if (this._graphData.length > 20) this._graphData.shift();
+
+      // Build smooth SVG path using cubic bezier curves
+      const points = this._graphData.map((v, i) => ({ x: (i / 19) * 160, y: 40 - v }));
+      let pathD = '';
+      for (let i = 0; i < points.length; i++) {
+        if (i === 0) {
+          pathD += `M ${points[i].x},${points[i].y}`;
+        } else {
+          const prev = points[i - 1];
+          const curr = points[i];
+          const cpX = (prev.x + curr.x) / 2; // Midpoint for smooth S-curve
+          pathD += ` C ${cpX},${prev.y} ${cpX},${curr.y} ${curr.x},${curr.y}`;
+        }
+      }
+
+      if (graphLine) graphLine.setAttribute('d', pathD);
+      // Fill area (close the path at the bottom)
+      if (graphFill) graphFill.setAttribute('d', `${pathD} L 160,40 L 0,40 Z`);
+    };
+
+    update();
+    this._monitorInterval = setInterval(update, 1000);
+  }
+
+  _stopMonitor() {
+    if (this._monitorInterval) {
+      clearInterval(this._monitorInterval);
+      this._monitorInterval = null;
+    }
+  }
+
   async exit() {
     this._killOrbits();
+    this._stopMonitor();
 
     const system = this.nodesContainer.querySelector('.bh-system');
     if (!system) {

@@ -23,7 +23,7 @@ const SPACE_QUOTES = [
 export class SpaceBackground {
   constructor() {
     this.canvas = document.getElementById('space-bg');
-    this.ctx = this.canvas.getContext('2d');
+    this.ctx = this.canvas.getContext('2d', { alpha: false });
     this.stars = [];
     this.shootingStars = [];
     this.comets = [];
@@ -32,11 +32,18 @@ export class SpaceBackground {
     this.particles = [];
     this.time = 0;
     this.running = false;
+    this._dpr = Math.min(window.devicePixelRatio, 2);
+
+    // Offscreen canvas for static star layer (redrawn ~4fps)
+    this._starCanvas = document.createElement('canvas');
+    this._starCtx = this._starCanvas.getContext('2d');
+    this._starDirty = true;
+    this._starRedrawTimer = 0;
 
     this._resize();
-    this._initStars(350);
+    this._initStars(250);
     this._initNebulaClouds(4);
-    this._initParticles(40);
+    this._initParticles(20);
 
     window.addEventListener('resize', () => this._resize());
     
@@ -46,23 +53,23 @@ export class SpaceBackground {
 
   _handleCanvasClick(e) {
     const rect = this.canvas.getBoundingClientRect();
-    const mouseX = e.clientX - rect.left;
-    const mouseY = e.clientY - rect.top;
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
 
-    // Check hit on alien ships
     for (const ship of this.alienShips) {
-      const dx = mouseX - ship.x;
-      const dy = mouseY - ship.y;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      
-      // Hit detection (size + generous padding)
-      if (dist < ship.size + 20) {
-        if (ship.quoteLife <= 0 || !ship.quoteLife) {
+      if (!ship.hasQuote) continue; // skip non-interactive ships
+      const dx = mx - ship.x;
+      const dy = my - ship.y;
+      const hitR = ship.size + 20;
+      // Squared distance — skip sqrt
+      if (dx * dx + dy * dy < hitR * hitR) {
+        if (!ship.quoteLife || ship.quoteLife <= 0) {
           ship.quote = SPACE_QUOTES[Math.floor(Math.random() * SPACE_QUOTES.length)];
-          ship.quoteLife = 4.0; // Show for 4 seconds
-          ship.quoteScale = 0;  // For pop-in animation
+          ship.quoteLife = 4.0;
+          ship.quoteScale = 0;
+          ship._cachedLayout = null; // force layout calc once
         }
-        break; // Only click one ship
+        break;
       }
     }
   }
@@ -70,16 +77,25 @@ export class SpaceBackground {
   _resize() {
     this.w = window.innerWidth;
     this.h = window.innerHeight;
-    this.canvas.width = this.w * Math.min(window.devicePixelRatio, 2);
-    this.canvas.height = this.h * Math.min(window.devicePixelRatio, 2);
+    this._dpr = Math.min(window.devicePixelRatio, 2);
+    this.canvas.width = this.w * this._dpr;
+    this.canvas.height = this.h * this._dpr;
     this.canvas.style.width = this.w + 'px';
     this.canvas.style.height = this.h + 'px';
-    this.ctx.scale(Math.min(window.devicePixelRatio, 2), Math.min(window.devicePixelRatio, 2));
+    this.ctx.scale(this._dpr, this._dpr);
+    // Resize offscreen star canvas
+    this._starCanvas.width = this.canvas.width;
+    this._starCanvas.height = this.canvas.height;
+    this._starCtx.scale(this._dpr, this._dpr);
+    this._starDirty = true;
   }
 
   _initStars(count) {
     this.stars = [];
     for (let i = 0; i < count; i++) {
+      const r = Math.round(180 + Math.random() * 75);
+      const g = Math.round(180 + Math.random() * 75);
+      const b = Math.round(200 + Math.random() * 55);
       this.stars.push({
         x: Math.random() * this.w,
         y: Math.random() * this.h,
@@ -87,10 +103,7 @@ export class SpaceBackground {
         baseAlpha: Math.random() * 0.6 + 0.2,
         twinkleSpeed: Math.random() * 2 + 0.5,
         twinklePhase: Math.random() * Math.PI * 2,
-        // Color variation
-        r: 180 + Math.random() * 75,
-        g: 180 + Math.random() * 75,
-        b: 200 + Math.random() * 55,
+        colorBase: `${r},${g},${b}`, // pre-baked color string
       });
     }
   }
@@ -139,11 +152,12 @@ export class SpaceBackground {
     const startY = Math.random() * this.h * 0.5;
     const angle = Math.PI * 0.15 + Math.random() * Math.PI * 0.2;
     const speed = 8 + Math.random() * 6;
+    const vx = Math.cos(angle) * speed;
+    const vy = Math.sin(angle) * speed;
+    const mag = Math.sqrt(vx * vx + vy * vy);
     this.shootingStars.push({
-      x: startX,
-      y: startY,
-      vx: Math.cos(angle) * speed,
-      vy: Math.sin(angle) * speed,
+      x: startX, y: startY, vx, vy,
+      dirX: vx / mag, dirY: vy / mag, // pre-computed unit vector
       life: 1.0,
       decay: 0.015 + Math.random() * 0.01,
       length: 30 + Math.random() * 40,
@@ -170,25 +184,21 @@ export class SpaceBackground {
     this.time += 0.016;
     const ctx = this.ctx;
 
-    // Clear
-    ctx.clearRect(0, 0, this.w, this.h);
-
-    // Background gradient
-    const bgGrad = ctx.createRadialGradient(
-      this.w * 0.5, this.h * 0.4, 0,
-      this.w * 0.5, this.h * 0.4, this.w * 0.8
-    );
-    bgGrad.addColorStop(0, '#131852');
-    bgGrad.addColorStop(0.5, '#0E1040');
-    bgGrad.addColorStop(1, '#0B0E2D');
-    ctx.fillStyle = bgGrad;
+    // Background gradient (solid fill — cheaper than gradient every frame)
+    ctx.fillStyle = '#0C1035';
     ctx.fillRect(0, 0, this.w, this.h);
 
     // Nebula clouds
     this._drawNebulaClouds(ctx);
 
-    // Stars
-    this._drawStars(ctx);
+    // Stars — rendered to offscreen canvas at reduced rate (~4fps)
+    this._starRedrawTimer += 0.016;
+    if (this._starDirty || this._starRedrawTimer > 0.25) {
+      this._renderStarsOffscreen();
+      this._starRedrawTimer = 0;
+      this._starDirty = false;
+    }
+    ctx.drawImage(this._starCanvas, 0, 0, this.w, this.h);
 
     // Floating particles
     this._drawParticles(ctx);
@@ -202,23 +212,23 @@ export class SpaceBackground {
     // Comets
     this._drawComets(ctx);
 
-    // Spawn shooting star periodically (more frequent)
+    // Spawn shooting star periodically
     this._lastShootingStar += 0.016;
-    if (this._lastShootingStar > 1 + Math.random() * 2) {
+    if (this._lastShootingStar > 1.5 + Math.random() * 2) {
       this._spawnShootingStar();
       this._lastShootingStar = 0;
     }
 
-    // Spawn comet periodically
+    // Spawn comet periodically (cap at 3)
     this._lastComet += 0.016;
-    if (this._lastComet > 8 + Math.random() * 7) {
+    if (this._lastComet > 8 + Math.random() * 7 && this.comets.length < 3) {
       this._spawnComet();
       this._lastComet = 0;
     }
 
-    // Alien ships — frequent
+    // Alien ships — cap at 6 simultaneous
     this._lastAlienShip += 0.016;
-    if (this._lastAlienShip > 3 + Math.random() * 3) {
+    if (this._lastAlienShip > 3 + Math.random() * 3 && this.alienShips.length < 6) {
       this._spawnAlienShip();
       this._lastAlienShip = 0;
     }
@@ -229,7 +239,6 @@ export class SpaceBackground {
       cloud.x += cloud.driftX;
       cloud.y += cloud.driftY;
 
-      // Wrap around
       if (cloud.x < -cloud.radius) cloud.x = this.w + cloud.radius;
       if (cloud.x > this.w + cloud.radius) cloud.x = -cloud.radius;
       if (cloud.y < -cloud.radius) cloud.y = this.h + cloud.radius;
@@ -249,45 +258,44 @@ export class SpaceBackground {
     }
   }
 
-  _drawStars(ctx) {
+  /** Render stars onto the offscreen canvas (called ~4fps) */
+  _renderStarsOffscreen() {
+    const sctx = this._starCtx;
+    sctx.clearRect(0, 0, this.w, this.h);
+
     for (const star of this.stars) {
       const twinkle = Math.sin(this.time * star.twinkleSpeed + star.twinklePhase);
       const alpha = star.baseAlpha + twinkle * 0.25;
       if (alpha <= 0) continue;
 
-      ctx.beginPath();
-      ctx.arc(star.x, star.y, star.radius, 0, Math.PI * 2);
-      ctx.fillStyle = `rgba(${Math.round(star.r)}, ${Math.round(star.g)}, ${Math.round(star.b)}, ${Math.min(1, alpha)})`;
-      ctx.fill();
+      sctx.beginPath();
+      sctx.arc(star.x, star.y, star.radius, 0, Math.PI * 2);
+      sctx.fillStyle = `rgba(${star.colorBase},${Math.min(1, alpha).toFixed(2)})`;
+      sctx.fill();
 
-      // Glow for brighter stars
-      if (star.radius > 1.2) {
-        ctx.beginPath();
-        ctx.arc(star.x, star.y, star.radius * 3, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(${Math.round(star.r)}, ${Math.round(star.g)}, ${Math.round(star.b)}, ${alpha * 0.08})`;
-        ctx.fill();
+      if (star.radius > 1.4) {
+        sctx.beginPath();
+        sctx.arc(star.x, star.y, star.radius * 2.5, 0, Math.PI * 2);
+        sctx.fillStyle = `rgba(${star.colorBase},${(alpha * 0.06).toFixed(3)})`;
+        sctx.fill();
       }
     }
   }
 
   _drawParticles(ctx) {
+    // Batch all particles into fewer draw calls by alpha grouping
+    ctx.fillStyle = 'rgba(200, 190, 255, 0.25)';
+    ctx.beginPath();
     for (const p of this.particles) {
       p.x += p.vx;
       p.y += p.vy;
-
-      // Wrap
       if (p.y < -10) { p.y = this.h + 10; p.x = Math.random() * this.w; }
       if (p.x < -10) p.x = this.w + 10;
       if (p.x > this.w + 10) p.x = -10;
-
-      const pulse = Math.sin(this.time * 1.5 + p.pulsePhase) * 0.3 + 0.7;
-      const alpha = p.alpha * pulse;
-
-      ctx.beginPath();
+      ctx.moveTo(p.x + p.size, p.y);
       ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-      ctx.fillStyle = `rgba(200, 190, 255, ${alpha})`;
-      ctx.fill();
     }
+    ctx.fill();
   }
 
   _drawShootingStars(ctx) {
@@ -302,13 +310,13 @@ export class SpaceBackground {
         continue;
       }
 
-      const tailX = ss.x - (ss.vx / Math.sqrt(ss.vx * ss.vx + ss.vy * ss.vy)) * ss.length;
-      const tailY = ss.y - (ss.vy / Math.sqrt(ss.vx * ss.vx + ss.vy * ss.vy)) * ss.length;
+      const tailX = ss.x - ss.dirX * ss.length;
+      const tailY = ss.y - ss.dirY * ss.length;
 
       const grad = ctx.createLinearGradient(tailX, tailY, ss.x, ss.y);
-      grad.addColorStop(0, `rgba(255, 255, 255, 0)`);
-      grad.addColorStop(0.7, `rgba(200, 200, 255, ${ss.life * 0.5})`);
-      grad.addColorStop(1, `rgba(255, 255, 255, ${ss.life})`);
+      grad.addColorStop(0, 'rgba(255,255,255,0)');
+      grad.addColorStop(0.7, `rgba(200,200,255,${(ss.life * 0.5).toFixed(2)})`);
+      grad.addColorStop(1, `rgba(255,255,255,${ss.life.toFixed(2)})`);
 
       ctx.beginPath();
       ctx.moveTo(tailX, tailY);
@@ -320,7 +328,7 @@ export class SpaceBackground {
       // Head glow
       ctx.beginPath();
       ctx.arc(ss.x, ss.y, 2 * ss.life, 0, Math.PI * 2);
-      ctx.fillStyle = `rgba(255, 255, 255, ${ss.life * 0.8})`;
+      ctx.fillStyle = `rgba(255,255,255,${(ss.life * 0.8).toFixed(2)})`;
       ctx.fill();
     }
   }
@@ -354,20 +362,17 @@ export class SpaceBackground {
     const palette = palettes[Math.floor(Math.random() * palettes.length)];
 
     this.comets.push({
-      x: startX,
-      y: startY,
-      vx,
-      vy,
+      x: startX, y: startY, vx, vy,
       headRadius: 3 + Math.random() * 2,
-      tailLength: 80 + Math.random() * 60,
       tailWidth: 4 + Math.random() * 3,
       life: 1.0,
       decay: 0.001 + Math.random() * 0.001,
       headColor: palette.head,
       tailColor: palette.tail,
+      headStr: `${palette.head[0]},${palette.head[1]},${palette.head[2]}`,
+      tailStr: `${palette.tail[0]},${palette.tail[1]},${palette.tail[2]}`,
       wobblePhase: Math.random() * Math.PI * 2,
       wobbleSpeed: 1.5 + Math.random(),
-      // Trail positions for smooth curved tail
       trail: [],
     });
   }
@@ -375,68 +380,56 @@ export class SpaceBackground {
   _drawComets(ctx) {
     for (let i = this.comets.length - 1; i >= 0; i--) {
       const c = this.comets[i];
-
-      // Slight wobble
       const wobble = Math.sin(this.time * c.wobbleSpeed + c.wobblePhase) * 0.3;
       c.x += c.vx;
       c.y += c.vy + wobble;
       c.life -= c.decay;
 
-      // Store trail point
       c.trail.push({ x: c.x, y: c.y });
-      if (c.trail.length > 60) c.trail.shift();
+      if (c.trail.length > 30) c.trail.shift();
 
-      // Remove if dead or off-screen
       if (c.life <= 0 || c.x > this.w + 100 || c.x < -100 || c.y > this.h + 100) {
         this.comets.splice(i, 1);
         continue;
       }
 
       const alpha = Math.min(1, c.life);
+      const tLen = c.trail.length;
 
-      // Draw tail using trail points
-      if (c.trail.length > 2) {
-        for (let j = 1; j < c.trail.length; j++) {
-          const t = j / c.trail.length; // 0 (oldest) to 1 (newest)
+      // Draw tail — skip every other segment for perf
+      if (tLen > 2) {
+        ctx.lineCap = 'round';
+        for (let j = 2; j < tLen; j += 2) {
+          const t = j / tLen;
           const pt = c.trail[j];
-          const prevPt = c.trail[j - 1];
-          const tailAlpha = t * t * alpha * 0.6;
-          const width = c.tailWidth * t;
-
-          // Interpolate color from tail to head
-          const r = Math.round(c.tailColor[0] + (c.headColor[0] - c.tailColor[0]) * t);
-          const g = Math.round(c.tailColor[1] + (c.headColor[1] - c.tailColor[1]) * t);
-          const b = Math.round(c.tailColor[2] + (c.headColor[2] - c.tailColor[2]) * t);
-
+          const prevPt = c.trail[j - 2];
           ctx.beginPath();
           ctx.moveTo(prevPt.x, prevPt.y);
           ctx.lineTo(pt.x, pt.y);
-          ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${tailAlpha})`;
-          ctx.lineWidth = width;
-          ctx.lineCap = 'round';
+          ctx.strokeStyle = `rgba(${c.tailStr},${(t * t * alpha * 0.6).toFixed(2)})`;
+          ctx.lineWidth = c.tailWidth * t;
           ctx.stroke();
         }
       }
 
-      // Outer glow
-      const glowR = c.headRadius * 6;
+      // Head glow — single radial gradient
+      const glowR = c.headRadius * 4;
       const glowGrad = ctx.createRadialGradient(c.x, c.y, 0, c.x, c.y, glowR);
-      glowGrad.addColorStop(0, `rgba(${c.headColor[0]}, ${c.headColor[1]}, ${c.headColor[2]}, ${alpha * 0.25})`);
-      glowGrad.addColorStop(0.5, `rgba(${c.headColor[0]}, ${c.headColor[1]}, ${c.headColor[2]}, ${alpha * 0.08})`);
-      glowGrad.addColorStop(1, `rgba(${c.headColor[0]}, ${c.headColor[1]}, ${c.headColor[2]}, 0)`);
+      glowGrad.addColorStop(0, `rgba(${c.headStr},${(alpha * 0.3).toFixed(2)})`);
+      glowGrad.addColorStop(1, `rgba(${c.headStr},0)`);
       ctx.fillStyle = glowGrad;
       ctx.fillRect(c.x - glowR, c.y - glowR, glowR * 2, glowR * 2);
 
-      // Comet head (bright core)
+      // Bright core
       ctx.beginPath();
       ctx.arc(c.x, c.y, c.headRadius, 0, Math.PI * 2);
-      ctx.fillStyle = `rgba(${c.headColor[0]}, ${c.headColor[1]}, ${c.headColor[2]}, ${alpha})`;
+      ctx.fillStyle = `rgba(${c.headStr},${alpha.toFixed(2)})`;
       ctx.fill();
 
-      // White-hot center
+      // White center
       ctx.beginPath();
       ctx.arc(c.x, c.y, c.headRadius * 0.5, 0, Math.PI * 2);
-      ctx.fillStyle = `rgba(255, 255, 255, ${alpha * 0.9})`;
+      ctx.fillStyle = `rgba(255,255,255,${(alpha * 0.9).toFixed(2)})`;
       ctx.fill();
     }
   }
@@ -466,11 +459,19 @@ export class SpaceBackground {
     const size = 12 + Math.random() * 14;
     const variant = Math.floor(Math.random() * 3); // 0=saucer, 1=angular, 2=dart
 
-    this.alienShips.push({ x, y, vx, vy, angle: shipAngle, size, palette, variant,
+    const [h, e, l] = [palette.hull, palette.engine, palette.light];
+    this.alienShips.push({ x, y, vx, vy, angle: shipAngle, size, variant,
+      // Pre-baked color strings
+      hullFill: `rgb(${h[0]},${h[1]},${h[2]})`,
+      hullLight: `rgb(${Math.min(255,h[0]+60)},${Math.min(255,h[1]+60)},${Math.min(255,h[2]+60)})`,
+      engineStr: `${e[0]},${e[1]},${e[2]}`,
+      lightStr: `${l[0]},${l[1]},${l[2]}`,
       blinkPhase: Math.random() * Math.PI * 2,
       blinkSpeed: 2 + Math.random() * 3,
       engineFlicker: Math.random() * Math.PI * 2,
       opacity: 0,
+      hasQuote: Math.random() < 0.2,
+      quoteLife: 0,
     });
   }
 
@@ -482,10 +483,8 @@ export class SpaceBackground {
       s.blinkPhase += 0.05;
       s.engineFlicker += 0.1;
 
-      // Fade in/out
       if (s.opacity < 1) s.opacity = Math.min(1, s.opacity + 0.04);
 
-      // Remove if off screen
       const pad = 100;
       if (s.x < -pad || s.x > this.w + pad || s.y < -pad || s.y > this.h + pad) {
         this.alienShips.splice(i, 1);
@@ -494,43 +493,30 @@ export class SpaceBackground {
 
       ctx.save();
       ctx.translate(s.x, s.y);
-      ctx.rotate(s.angle + Math.PI / 2); // orient along travel direction
+      ctx.rotate(s.angle + Math.PI / 2);
       ctx.globalAlpha = s.opacity;
 
       const sz = s.size;
-      const [hr, hg, hb] = s.palette.hull;
-      const [er, eg, eb] = s.palette.engine;
-      const [lr, lg, lb] = s.palette.light;
 
-      // Engine glow (behind ship)
-      const engineAlpha = 0.4 + Math.sin(s.engineFlicker) * 0.3;
-      const engineGrad = ctx.createRadialGradient(0, sz * 0.8, 0, 0, sz * 0.8, sz * 1.2);
-      engineGrad.addColorStop(0, `rgba(${er},${eg},${eb},${engineAlpha})`);
-      engineGrad.addColorStop(0.5, `rgba(${er},${eg},${eb},${engineAlpha * 0.4})`);
-      engineGrad.addColorStop(1, `rgba(${er},${eg},${eb},0)`);
-      ctx.fillStyle = engineGrad;
-      ctx.fillRect(-sz, 0, sz * 2, sz * 2);
+      // Engine glow — simplified single-color radial
+      const ea = (0.4 + Math.sin(s.engineFlicker) * 0.3).toFixed(2);
+      ctx.fillStyle = `rgba(${s.engineStr},${ea})`;
+      ctx.beginPath();
+      ctx.arc(0, sz * 0.8, sz * 0.8, 0, Math.PI * 2);
+      ctx.fill();
 
+      // Ship hull — solid fill (no gradient = big perf win)
       if (s.variant === 0) {
-        // Saucer shape
         ctx.beginPath();
         ctx.ellipse(0, 0, sz, sz * 0.38, 0, 0, Math.PI * 2);
-        const hullGrad = ctx.createLinearGradient(0, -sz * 0.38, 0, sz * 0.38);
-        hullGrad.addColorStop(0, `rgba(${hr+60},${hg+60},${hb+60},0.95)`);
-        hullGrad.addColorStop(0.5, `rgba(${hr},${hg},${hb},0.85)`);
-        hullGrad.addColorStop(1, `rgba(${Math.max(0,hr-40)},${Math.max(0,hg-40)},${Math.max(0,hb-40)},0.9)`);
-        ctx.fillStyle = hullGrad;
+        ctx.fillStyle = s.hullFill;
         ctx.fill();
         // Dome
         ctx.beginPath();
         ctx.ellipse(0, -sz * 0.1, sz * 0.35, sz * 0.3, 0, Math.PI, Math.PI * 2);
-        ctx.fillStyle = `rgba(${lr},${lg},${lb},0.35)`;
+        ctx.fillStyle = `rgba(${s.lightStr},0.35)`;
         ctx.fill();
-        ctx.strokeStyle = `rgba(${hr+80},${hg+80},${hb+80},0.5)`;
-        ctx.lineWidth = 0.8;
-        ctx.stroke();
       } else if (s.variant === 1) {
-        // Angular ship
         ctx.beginPath();
         ctx.moveTo(0, -sz);
         ctx.lineTo(sz * 0.6, sz * 0.5);
@@ -538,125 +524,89 @@ export class SpaceBackground {
         ctx.lineTo(-sz * 0.25, sz * 0.2);
         ctx.lineTo(-sz * 0.6, sz * 0.5);
         ctx.closePath();
-        const ag = ctx.createLinearGradient(0, -sz, 0, sz * 0.5);
-        ag.addColorStop(0, `rgba(${hr+80},${hg+80},${hb+80},0.95)`);
-        ag.addColorStop(1, `rgba(${hr},${hg},${hb},0.8)`);
-        ctx.fillStyle = ag;
+        ctx.fillStyle = s.hullLight;
         ctx.fill();
       } else {
-        // Dart shape
         ctx.beginPath();
         ctx.moveTo(0, -sz * 1.1);
         ctx.lineTo(sz * 0.45, sz * 0.6);
         ctx.lineTo(0, sz * 0.25);
         ctx.lineTo(-sz * 0.45, sz * 0.6);
         ctx.closePath();
-        const dg = ctx.createLinearGradient(-sz * 0.45, 0, sz * 0.45, 0);
-        dg.addColorStop(0, `rgba(${Math.max(0,hr-30)},${Math.max(0,hg-30)},${Math.max(0,hb-30)},0.9)`);
-        dg.addColorStop(0.5, `rgba(${hr+60},${hg+60},${hb+60},0.95)`);
-        dg.addColorStop(1, `rgba(${Math.max(0,hr-30)},${Math.max(0,hg-30)},${Math.max(0,hb-30)},0.9)`);
-        ctx.fillStyle = dg;
+        ctx.fillStyle = s.hullFill;
         ctx.fill();
       }
 
       // Blinking lights
       const blink = Math.sin(s.blinkPhase * s.blinkSpeed) > 0 ? 1 : 0.15;
-      ctx.beginPath();
-      ctx.arc(-sz * 0.5, sz * 0.1, 2, 0, Math.PI * 2);
-      ctx.fillStyle = `rgba(${lr},${lg},${lb},${blink})`;
-      ctx.fill();
-      ctx.beginPath();
-      ctx.arc(sz * 0.5, sz * 0.1, 2, 0, Math.PI * 2);
-      ctx.fillStyle = `rgba(${lr},${lg},${lb},${1 - blink + 0.15})`;
-      ctx.fill();
+      ctx.fillStyle = `rgba(${s.lightStr},${blink})`;
+      ctx.fillRect(-sz * 0.5 - 2, sz * 0.1 - 2, 4, 4);
+      ctx.fillStyle = `rgba(${s.lightStr},${1 - blink + 0.15})`;
+      ctx.fillRect(sz * 0.5 - 2, sz * 0.1 - 2, 4, 4);
 
       ctx.globalAlpha = 1;
       ctx.restore();
 
       // Render Quote Bubble (if active)
       if (s.quoteLife > 0) {
-        s.quoteLife -= 0.016; // decrement by frame time
-        
-        // Pop-in animation scale
+        s.quoteLife -= 0.016;
         if (s.quoteScale === undefined) s.quoteScale = 0;
-        if (s.quoteLife > 0.3) {
-          s.quoteScale += (1 - s.quoteScale) * 0.15; // spring towards 1
-        } else {
-          s.quoteScale *= 0.8; // shrink away
-        }
+        if (s.quoteLife > 0.3) s.quoteScale += (1 - s.quoteScale) * 0.15;
+        else s.quoteScale *= 0.8;
 
         if (s.quoteScale > 0.05) {
+          // Cache layout on first render (avoid measureText every frame)
+          if (!s._cachedLayout) {
+            ctx.font = 'bold 11px sans-serif';
+            const maxW = 220;
+            const words = s.quote.split(' ');
+            let line = '', lines = [], mlw = 0;
+            for (let n = 0; n < words.length; n++) {
+              let test = line + words[n] + ' ';
+              if (ctx.measureText(test).width > maxW && n > 0) {
+                let lw = ctx.measureText(line).width;
+                if (lw > mlw) mlw = lw;
+                lines.push(line);
+                line = words[n] + ' ';
+              } else line = test;
+            }
+            lines.push(line);
+            let fw = ctx.measureText(line).width;
+            if (fw > mlw) mlw = fw;
+            s._cachedLayout = { lines, boxW: mlw + 24, boxH: lines.length * 16 + 16 };
+          }
+
+          const { lines, boxW, boxH } = s._cachedLayout;
+          const py = -sz - 15;
+
           ctx.save();
           ctx.translate(s.x, s.y);
           ctx.scale(s.quoteScale, s.quoteScale);
-          
-          // Prepare font for measuring
           ctx.font = 'bold 11px sans-serif';
-          
-          const maxWidth = 220; // max width before wrapping
-          const words = s.quote.split(' ');
-          let line = '';
-          let lines = [];
-          let maxLineWidth = 0;
-          
-          // Measure and wrap text
-          for (let n = 0; n < words.length; n++) {
-            let testLine = line + words[n] + ' ';
-            let metrics = ctx.measureText(testLine);
-            if (metrics.width > maxWidth && n > 0) {
-              lines.push(line);
-              let w = ctx.measureText(line).width;
-              if (w > maxLineWidth) maxLineWidth = w;
-              line = words[n] + ' ';
-            } else {
-              line = testLine;
-            }
-          }
-          lines.push(line);
-          let finalW = ctx.measureText(line).width;
-          if (finalW > maxLineWidth) maxLineWidth = finalW;
-          
-          const lineHeight = 16;
-          
-          // Dynamic box dimensions
-          const boxW = maxLineWidth + 24; // padding sides
-          const boxH = (lines.length * lineHeight) + 16; // padding top/bottom
-          const py = -sz - 15; // hover above ship
-          
-          // Bubble styling (Deep Blue)
-          ctx.fillStyle = 'rgba(11, 14, 45, 0.95)'; // Deep blue
-          ctx.strokeStyle = 'rgba(255, 110, 199, 0.6)'; // Pink border accent
+
+          ctx.fillStyle = 'rgba(11, 14, 45, 0.95)';
+          ctx.strokeStyle = 'rgba(255, 110, 199, 0.6)';
           ctx.lineWidth = 1.5;
-          ctx.shadowColor = 'rgba(0, 0, 0, 0.6)';
+          ctx.shadowColor = 'rgba(0,0,0,0.6)';
           ctx.shadowBlur = 10;
           ctx.shadowOffsetY = 5;
-
-          // Draw speech bubble path
           ctx.beginPath();
-          ctx.roundRect(-boxW/2, py - boxH, boxW, boxH, 8);
+          ctx.roundRect(-boxW / 2, py - boxH, boxW, boxH, 8);
           ctx.fill();
-          ctx.shadowColor = 'transparent'; // stop shadow for stroke & tail
+          ctx.shadowColor = 'transparent';
           ctx.stroke();
 
-          // Tail
           ctx.beginPath();
-          ctx.moveTo(-6, py);
-          ctx.lineTo(6, py);
-          ctx.lineTo(0, py + 8);
+          ctx.moveTo(-6, py); ctx.lineTo(6, py); ctx.lineTo(0, py + 8);
           ctx.closePath();
           ctx.fillStyle = 'rgba(11, 14, 45, 0.95)';
           ctx.fill();
-          
-          // Draw Text (Bright Saturated Pink)
-          ctx.fillStyle = '#FF2A93'; // Bright saturated pink
+
+          ctx.fillStyle = '#FF2A93';
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
-          
-          const startY = py - boxH/2 - ((lines.length - 1) * lineHeight) / 2;
-          
-          for (let i = 0; i < lines.length; i++) {
-            ctx.fillText(lines[i], 0, startY + (i * lineHeight));
-          }
+          const startY = py - boxH / 2 - ((lines.length - 1) * 16) / 2;
+          for (let k = 0; k < lines.length; k++) ctx.fillText(lines[k], 0, startY + k * 16);
 
           ctx.restore();
         }
