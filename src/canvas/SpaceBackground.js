@@ -1,6 +1,23 @@
+const SPACE_QUOTES = [
+  "Look up at the stars and not down at your feet.",
+  "The universe is under no obligation to make sense to you.",
+  "We are all in the gutter, but some of us are looking at the stars.",
+  "To the mind that is still, the whole universe surrenders.",
+  "Somewhere, something incredible is waiting to be known.",
+  "The cosmos is within us. We are made of star-stuff.",
+  "Not only are we in the universe, the universe is in us.",
+  "Space is for everybody. It's not just for a few people in science or math.",
+  "Equipped with his five senses, man explores the universe around him and calls the adventure Science.",
+  "For small creatures such as we the vastness is bearable only through love.",
+  "There are as many atoms in a single molecule of your DNA as there are stars in the typical galaxy.",
+  "Imagination will often carry us to worlds that never were, but without it we go nowhere.",
+  "Every one of us is, in the cosmic perspective, precious.",
+  "The universe is a pretty big place. If it's just us, seems like an awful waste of space."
+];
+
 /**
  * SpaceBackground — Animated canvas starfield with twinkling,
- * shooting stars, comets, and drifting nebula clouds.
+ * shooting stars, comets, drifting nebula clouds, and interactive alien ships.
  * Lightweight Canvas 2D — replaces Three.js Nebula.
  */
 export class SpaceBackground {
@@ -22,6 +39,32 @@ export class SpaceBackground {
     this._initParticles(40);
 
     window.addEventListener('resize', () => this._resize());
+    
+    // Interactive alien ships click handler
+    this.canvas.addEventListener('click', (e) => this._handleCanvasClick(e));
+  }
+
+  _handleCanvasClick(e) {
+    const rect = this.canvas.getBoundingClientRect();
+    const mouseX = e.clientX - rect.left;
+    const mouseY = e.clientY - rect.top;
+
+    // Check hit on alien ships
+    for (const ship of this.alienShips) {
+      const dx = mouseX - ship.x;
+      const dy = mouseY - ship.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      
+      // Hit detection (size + generous padding)
+      if (dist < ship.size + 20) {
+        if (ship.quoteLife <= 0 || !ship.quoteLife) {
+          ship.quote = SPACE_QUOTES[Math.floor(Math.random() * SPACE_QUOTES.length)];
+          ship.quoteLife = 4.0; // Show for 4 seconds
+          ship.quoteScale = 0;  // For pop-in animation
+        }
+        break; // Only click one ship
+      }
+    }
   }
 
   _resize() {
@@ -529,6 +572,95 @@ export class SpaceBackground {
 
       ctx.globalAlpha = 1;
       ctx.restore();
+
+      // Render Quote Bubble (if active)
+      if (s.quoteLife > 0) {
+        s.quoteLife -= 0.016; // decrement by frame time
+        
+        // Pop-in animation scale
+        if (s.quoteScale === undefined) s.quoteScale = 0;
+        if (s.quoteLife > 0.3) {
+          s.quoteScale += (1 - s.quoteScale) * 0.15; // spring towards 1
+        } else {
+          s.quoteScale *= 0.8; // shrink away
+        }
+
+        if (s.quoteScale > 0.05) {
+          ctx.save();
+          ctx.translate(s.x, s.y);
+          ctx.scale(s.quoteScale, s.quoteScale);
+          
+          // Prepare font for measuring
+          ctx.font = 'bold 11px sans-serif';
+          
+          const maxWidth = 220; // max width before wrapping
+          const words = s.quote.split(' ');
+          let line = '';
+          let lines = [];
+          let maxLineWidth = 0;
+          
+          // Measure and wrap text
+          for (let n = 0; n < words.length; n++) {
+            let testLine = line + words[n] + ' ';
+            let metrics = ctx.measureText(testLine);
+            if (metrics.width > maxWidth && n > 0) {
+              lines.push(line);
+              let w = ctx.measureText(line).width;
+              if (w > maxLineWidth) maxLineWidth = w;
+              line = words[n] + ' ';
+            } else {
+              line = testLine;
+            }
+          }
+          lines.push(line);
+          let finalW = ctx.measureText(line).width;
+          if (finalW > maxLineWidth) maxLineWidth = finalW;
+          
+          const lineHeight = 16;
+          
+          // Dynamic box dimensions
+          const boxW = maxLineWidth + 24; // padding sides
+          const boxH = (lines.length * lineHeight) + 16; // padding top/bottom
+          const py = -sz - 15; // hover above ship
+          
+          // Bubble styling (Deep Blue)
+          ctx.fillStyle = 'rgba(11, 14, 45, 0.95)'; // Deep blue
+          ctx.strokeStyle = 'rgba(255, 110, 199, 0.6)'; // Pink border accent
+          ctx.lineWidth = 1.5;
+          ctx.shadowColor = 'rgba(0, 0, 0, 0.6)';
+          ctx.shadowBlur = 10;
+          ctx.shadowOffsetY = 5;
+
+          // Draw speech bubble path
+          ctx.beginPath();
+          ctx.roundRect(-boxW/2, py - boxH, boxW, boxH, 8);
+          ctx.fill();
+          ctx.shadowColor = 'transparent'; // stop shadow for stroke & tail
+          ctx.stroke();
+
+          // Tail
+          ctx.beginPath();
+          ctx.moveTo(-6, py);
+          ctx.lineTo(6, py);
+          ctx.lineTo(0, py + 8);
+          ctx.closePath();
+          ctx.fillStyle = 'rgba(11, 14, 45, 0.95)';
+          ctx.fill();
+          
+          // Draw Text (Bright Saturated Pink)
+          ctx.fillStyle = '#FF2A93'; // Bright saturated pink
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          
+          const startY = py - boxH/2 - ((lines.length - 1) * lineHeight) / 2;
+          
+          for (let i = 0; i < lines.length; i++) {
+            ctx.fillText(lines[i], 0, startY + (i * lineHeight));
+          }
+
+          ctx.restore();
+        }
+      }
     }
   }
 }
