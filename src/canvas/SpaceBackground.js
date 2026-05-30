@@ -10,6 +10,7 @@ export class SpaceBackground {
     this.stars = [];
     this.shootingStars = [];
     this.comets = [];
+    this.alienShips = [];
     this.nebulaClouds = [];
     this.particles = [];
     this.time = 0;
@@ -111,6 +112,7 @@ export class SpaceBackground {
     this.running = true;
     this._lastShootingStar = 0;
     this._lastComet = 0;
+    this._lastAlienShip = 0;
     this._animate();
   }
 
@@ -148,6 +150,9 @@ export class SpaceBackground {
     // Floating particles
     this._drawParticles(ctx);
 
+    // Alien ships
+    this._drawAlienShips(ctx);
+
     // Shooting stars
     this._drawShootingStars(ctx);
 
@@ -166,6 +171,13 @@ export class SpaceBackground {
     if (this._lastComet > 8 + Math.random() * 7) {
       this._spawnComet();
       this._lastComet = 0;
+    }
+
+    // Alien ships — frequent
+    this._lastAlienShip += 0.016;
+    if (this._lastAlienShip > 3 + Math.random() * 3) {
+      this._spawnAlienShip();
+      this._lastAlienShip = 0;
     }
   }
 
@@ -383,6 +395,140 @@ export class SpaceBackground {
       ctx.arc(c.x, c.y, c.headRadius * 0.5, 0, Math.PI * 2);
       ctx.fillStyle = `rgba(255, 255, 255, ${alpha * 0.9})`;
       ctx.fill();
+    }
+  }
+  _spawnAlienShip() {
+    // Random entry from any edge
+    const edge = Math.floor(Math.random() * 4); // 0=top, 1=right, 2=bottom, 3=left
+    let x, y, vx, vy;
+    const speed = 0.8 + Math.random() * 1.4;
+    const angle = Math.random() * Math.PI * 0.5 - Math.PI * 0.25; // ±45° spread
+
+    if (edge === 0) { x = Math.random() * this.w; y = -60; vx = Math.sin(angle) * speed; vy = speed; }
+    else if (edge === 1) { x = this.w + 60; y = Math.random() * this.h; vx = -speed; vy = Math.sin(angle) * speed; }
+    else if (edge === 2) { x = Math.random() * this.w; y = this.h + 60; vx = Math.sin(angle) * speed; vy = -speed; }
+    else { x = -60; y = Math.random() * this.h; vx = speed; vy = Math.sin(angle) * speed; }
+
+    const shipAngle = Math.atan2(vy, vx);
+
+    // Color palettes
+    const palettes = [
+      { hull: [80, 200, 180], engine: [0, 255, 200], light: [255, 100, 100] },
+      { hull: [180, 100, 255], engine: [200, 100, 255], light: [100, 255, 200] },
+      { hull: [100, 180, 255], engine: [50, 200, 255], light: [255, 220, 50] },
+      { hull: [255, 160, 80], engine: [255, 100, 50], light: [100, 220, 255] },
+      { hull: [200, 255, 100], engine: [150, 255, 50], light: [255, 80, 180] },
+    ];
+    const palette = palettes[Math.floor(Math.random() * palettes.length)];
+    const size = 12 + Math.random() * 14;
+    const variant = Math.floor(Math.random() * 3); // 0=saucer, 1=angular, 2=dart
+
+    this.alienShips.push({ x, y, vx, vy, angle: shipAngle, size, palette, variant,
+      blinkPhase: Math.random() * Math.PI * 2,
+      blinkSpeed: 2 + Math.random() * 3,
+      engineFlicker: Math.random() * Math.PI * 2,
+      opacity: 0,
+    });
+  }
+
+  _drawAlienShips(ctx) {
+    for (let i = this.alienShips.length - 1; i >= 0; i--) {
+      const s = this.alienShips[i];
+      s.x += s.vx;
+      s.y += s.vy;
+      s.blinkPhase += 0.05;
+      s.engineFlicker += 0.1;
+
+      // Fade in/out
+      if (s.opacity < 1) s.opacity = Math.min(1, s.opacity + 0.04);
+
+      // Remove if off screen
+      const pad = 100;
+      if (s.x < -pad || s.x > this.w + pad || s.y < -pad || s.y > this.h + pad) {
+        this.alienShips.splice(i, 1);
+        continue;
+      }
+
+      ctx.save();
+      ctx.translate(s.x, s.y);
+      ctx.rotate(s.angle + Math.PI / 2); // orient along travel direction
+      ctx.globalAlpha = s.opacity;
+
+      const sz = s.size;
+      const [hr, hg, hb] = s.palette.hull;
+      const [er, eg, eb] = s.palette.engine;
+      const [lr, lg, lb] = s.palette.light;
+
+      // Engine glow (behind ship)
+      const engineAlpha = 0.4 + Math.sin(s.engineFlicker) * 0.3;
+      const engineGrad = ctx.createRadialGradient(0, sz * 0.8, 0, 0, sz * 0.8, sz * 1.2);
+      engineGrad.addColorStop(0, `rgba(${er},${eg},${eb},${engineAlpha})`);
+      engineGrad.addColorStop(0.5, `rgba(${er},${eg},${eb},${engineAlpha * 0.4})`);
+      engineGrad.addColorStop(1, `rgba(${er},${eg},${eb},0)`);
+      ctx.fillStyle = engineGrad;
+      ctx.fillRect(-sz, 0, sz * 2, sz * 2);
+
+      if (s.variant === 0) {
+        // Saucer shape
+        ctx.beginPath();
+        ctx.ellipse(0, 0, sz, sz * 0.38, 0, 0, Math.PI * 2);
+        const hullGrad = ctx.createLinearGradient(0, -sz * 0.38, 0, sz * 0.38);
+        hullGrad.addColorStop(0, `rgba(${hr+60},${hg+60},${hb+60},0.95)`);
+        hullGrad.addColorStop(0.5, `rgba(${hr},${hg},${hb},0.85)`);
+        hullGrad.addColorStop(1, `rgba(${Math.max(0,hr-40)},${Math.max(0,hg-40)},${Math.max(0,hb-40)},0.9)`);
+        ctx.fillStyle = hullGrad;
+        ctx.fill();
+        // Dome
+        ctx.beginPath();
+        ctx.ellipse(0, -sz * 0.1, sz * 0.35, sz * 0.3, 0, Math.PI, Math.PI * 2);
+        ctx.fillStyle = `rgba(${lr},${lg},${lb},0.35)`;
+        ctx.fill();
+        ctx.strokeStyle = `rgba(${hr+80},${hg+80},${hb+80},0.5)`;
+        ctx.lineWidth = 0.8;
+        ctx.stroke();
+      } else if (s.variant === 1) {
+        // Angular ship
+        ctx.beginPath();
+        ctx.moveTo(0, -sz);
+        ctx.lineTo(sz * 0.6, sz * 0.5);
+        ctx.lineTo(sz * 0.25, sz * 0.2);
+        ctx.lineTo(-sz * 0.25, sz * 0.2);
+        ctx.lineTo(-sz * 0.6, sz * 0.5);
+        ctx.closePath();
+        const ag = ctx.createLinearGradient(0, -sz, 0, sz * 0.5);
+        ag.addColorStop(0, `rgba(${hr+80},${hg+80},${hb+80},0.95)`);
+        ag.addColorStop(1, `rgba(${hr},${hg},${hb},0.8)`);
+        ctx.fillStyle = ag;
+        ctx.fill();
+      } else {
+        // Dart shape
+        ctx.beginPath();
+        ctx.moveTo(0, -sz * 1.1);
+        ctx.lineTo(sz * 0.45, sz * 0.6);
+        ctx.lineTo(0, sz * 0.25);
+        ctx.lineTo(-sz * 0.45, sz * 0.6);
+        ctx.closePath();
+        const dg = ctx.createLinearGradient(-sz * 0.45, 0, sz * 0.45, 0);
+        dg.addColorStop(0, `rgba(${Math.max(0,hr-30)},${Math.max(0,hg-30)},${Math.max(0,hb-30)},0.9)`);
+        dg.addColorStop(0.5, `rgba(${hr+60},${hg+60},${hb+60},0.95)`);
+        dg.addColorStop(1, `rgba(${Math.max(0,hr-30)},${Math.max(0,hg-30)},${Math.max(0,hb-30)},0.9)`);
+        ctx.fillStyle = dg;
+        ctx.fill();
+      }
+
+      // Blinking lights
+      const blink = Math.sin(s.blinkPhase * s.blinkSpeed) > 0 ? 1 : 0.15;
+      ctx.beginPath();
+      ctx.arc(-sz * 0.5, sz * 0.1, 2, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(${lr},${lg},${lb},${blink})`;
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(sz * 0.5, sz * 0.1, 2, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(${lr},${lg},${lb},${1 - blink + 0.15})`;
+      ctx.fill();
+
+      ctx.globalAlpha = 1;
+      ctx.restore();
     }
   }
 }

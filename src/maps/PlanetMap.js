@@ -299,7 +299,7 @@ export class PlanetMap {
     // Create the flying rocket element (fixed position for flight)
     const rocketEl = document.createElement('div');
     rocketEl.className = 'ss-rocket-flying';
-    rocketEl.innerHTML = this._createRocketSVG(44);
+    rocketEl.innerHTML = this._createRocketSVG(32);
     document.body.appendChild(rocketEl);
     this._rocketElement = rocketEl;
     this._landedNode = node;
@@ -356,7 +356,7 @@ export class PlanetMap {
     // Add a parked rocket as a child of the planet node (so it orbits with it)
     const parkedRocket = document.createElement('div');
     parkedRocket.className = 'ss-rocket-parked';
-    parkedRocket.innerHTML = this._createRocketSVG(22);
+    parkedRocket.innerHTML = this._createRocketSVG(16);
     // Hide flame on parked rocket
     const parkedFlame = parkedRocket.querySelector('.rocket-flame');
     if (parkedFlame) parkedFlame.style.display = 'none';
@@ -379,16 +379,7 @@ export class PlanetMap {
     // Remove parked rocket from the landed planet node
     if (this._landedNode) {
       const parked = this._landedNode.querySelector('.ss-rocket-parked');
-      if (parked) {
-        gsap.to(parked, {
-          opacity: 0,
-          scale: 0.3,
-          y: -15,
-          duration: 0.3,
-          ease: 'power2.in',
-          onComplete: () => parked.remove(),
-        });
-      }
+      if (parked) parked.remove();
       this._landedNode = null;
     }
   }
@@ -404,102 +395,287 @@ export class PlanetMap {
 
     this._zoomed = true;
     this._zoomedNode = node;
-
-    // Get planet's current screen position
-    const planetBody = node.querySelector('.ss-planet-body');
-    const planetRect = planetBody.getBoundingClientRect();
-    const planetCenterX = planetRect.left + planetRect.width / 2;
-    const planetCenterY = planetRect.top + planetRect.height / 2;
-
-    // We want the planet at left ~30% and vertically centered
-    const targetX = window.innerWidth * 0.28;
-    const targetY = window.innerHeight * 0.48;
-
-    // How far we need to shift (in pre-scale coordinates)
     const zoomScale = 2.5;
-    const shiftX = (targetX - planetCenterX) / zoomScale;
-    const shiftY = (targetY - planetCenterY) / zoomScale;
 
-    // Get current system position
-    const systemRect = system.getBoundingClientRect();
-    const systemCenterX = systemRect.left + systemRect.width / 2;
-    const systemCenterY = systemRect.top + systemRect.height / 2;
-
-    // Set transform origin to system center
+    system.style.willChange = 'transform';
     system.style.transformOrigin = 'center center';
 
-    // Animate zoom
+    // Step 1: Start tracking FIRST
+    this._startIntervalTracker(system, node, zoomScale);
+
+    // Brief wait so tracker pans camera before zoom
+    await new Promise(r => setTimeout(r, 200));
+
+    // Step 2: Scale zoom — tracker handles x/y, this handles scale only
     await gsap.to(system, {
       scale: zoomScale,
-      x: shiftX,
-      y: shiftY,
       duration: 1.0,
       ease: 'power3.inOut',
+      force3D: true,
     });
 
-    // Start a tracker that follows the planet's orbital motion
-    this._startCameraTracker(system, node, zoomScale);
+    // Spawn astronaut
+    this._spawnAstronaut(node);
   }
 
-  /** Follow the planet's orbital movement while zoomed */
-  _startCameraTracker(system, node, zoomScale) {
-    if (this._cameraTracker) this._cameraTracker.kill();
+  /**
+   * rAF-based camera tracker with lerp (0.05/frame).
+   * Mathematically cannot oscillate: error × 0.95^n → 0.
+   * At 60fps, corrections are sub-pixel and completely invisible.
+   */
+  _startIntervalTracker(system, node, zoomScale) {
+    if (this._cameraTracker) {
+      cancelAnimationFrame(this._cameraTracker);
+      this._cameraTracker = null;
+    }
 
-    const targetXPercent = 0.28;
-    const targetYPercent = 0.48;
+    const TARGET_X = window.innerWidth * 0.28;
+    const TARGET_Y = window.innerHeight * 0.48;
+    const LERP = 0.05; // 5% of remaining gap per frame — smooth, never overshoots
 
-    this._cameraTracker = gsap.ticker.add(() => {
+    const tick = () => {
       if (!this._zoomed) return;
 
-      const planetBody = node.querySelector('.ss-planet-body');
-      if (!planetBody) return;
+      const pb = node.querySelector('.ss-planet-body');
+      if (pb) {
+        const r = pb.getBoundingClientRect();
+        const cx = r.left + r.width / 2;
+        const cy = r.top + r.height / 2;
 
-      const planetRect = planetBody.getBoundingClientRect();
-      const planetCenterX = planetRect.left + planetRect.width / 2;
-      const planetCenterY = planetRect.top + planetRect.height / 2;
+        const currentScale = gsap.getProperty(system, 'scaleX') || 1;
+        const diffX = (TARGET_X - cx) / currentScale;
+        const diffY = (TARGET_Y - cy) / currentScale;
 
-      const targetX = window.innerWidth * targetXPercent;
-      const targetY = window.innerHeight * targetYPercent;
+        // Only nudge if there's meaningful drift
+        if (Math.abs(diffX) > 0.3 || Math.abs(diffY) > 0.3) {
+          gsap.set(system, {
+            x: `+=${diffX * LERP}`,
+            y: `+=${diffY * LERP}`,
+            force3D: true,
+          });
+        }
+      }
 
-      const diffX = (targetX - planetCenterX) / zoomScale;
-      const diffY = (targetY - planetCenterY) / zoomScale;
+      this._cameraTracker = requestAnimationFrame(tick);
+    };
 
-      // Smooth camera follow
-      const currentX = gsap.getProperty(system, 'x') || 0;
-      const currentY = gsap.getProperty(system, 'y') || 0;
-
-      gsap.set(system, {
-        x: currentX + diffX * 0.08,
-        y: currentY + diffY * 0.08,
-      });
-    });
+    this._cameraTracker = requestAnimationFrame(tick);
   }
+
 
   /** Zoom back out to the full solar system view */
   async zoomOut() {
     const system = this.nodesContainer.querySelector('.solar-system');
     if (!system) return;
 
-    // Stop camera tracking
+    // Astronaut boards rocket, rocket lifts off
+    await this._recallAstronaut();
+
+    // Stop rAF tracker
     if (this._cameraTracker) {
-      gsap.ticker.remove(this._cameraTracker);
+      cancelAnimationFrame(this._cameraTracker);
       this._cameraTracker = null;
     }
 
     this._zoomed = false;
     this._zoomedNode = null;
-
-    // Remove flight rocket
     this._removeFlightRocket();
 
-    // Animate zoom out
     await gsap.to(system, {
       scale: 1,
       x: 0,
       y: 0,
       duration: 0.8,
       ease: 'power3.inOut',
+      force3D: true,
+      onComplete: () => { system.style.willChange = 'auto'; },
     });
+  }
+
+  // ══════════════════════════════════════════
+  // ASTRONAUT — Exits rocket, plants flag, re-boards on close
+  // ══════════════════════════════════════════
+
+  /** Spawn astronaut that walks out of rocket onto planet */
+  _spawnAstronaut(node) {
+    // Remove any existing astronaut
+    node.querySelectorAll('.ss-astronaut, .ss-flag').forEach(e => e.remove());
+
+    const planetBody = node.querySelector('.ss-planet-body');
+    const parkedRocket = node.querySelector('.ss-rocket-parked');
+    if (!planetBody || !parkedRocket) return;
+
+    const pSize = planetBody.offsetWidth || 50;
+
+    // Create astronaut
+    const astronaut = document.createElement('div');
+    astronaut.className = 'ss-astronaut';
+    astronaut.innerHTML = this._createAstronautSVG(12);
+
+    // Start position: at the rocket (bottom-left of planet)
+    astronaut.style.position = 'absolute';
+    astronaut.style.left = `calc(50% - ${pSize * 0.35}px)`;
+    astronaut.style.top = `calc(50% + ${pSize * 0.1}px)`;
+    astronaut.style.zIndex = '20';
+    astronaut.style.pointerEvents = 'none';
+    astronaut.style.transformOrigin = 'bottom center';
+    node.appendChild(astronaut);
+
+    // Create flag (spawns where astronaut walks to)
+    const flag = document.createElement('div');
+    flag.className = 'ss-flag';
+    flag.innerHTML = this._createFlagSVG();
+    flag.style.position = 'absolute';
+    flag.style.left = `calc(50% + ${pSize * 0.08}px)`;
+    flag.style.top = `calc(50% - ${pSize * 0.12}px)`;
+    flag.style.zIndex = '19';
+    flag.style.pointerEvents = 'none';
+    flag.style.opacity = '0';
+    node.appendChild(flag);
+
+    // Animate: pop in from rocket, walk right, plant flag
+    const tl = gsap.timeline();
+
+    // Emerge from rocket
+    tl.fromTo(astronaut,
+      { scale: 0, opacity: 0, x: 0, y: 0 },
+      { scale: 1, opacity: 1, duration: 0.35, ease: 'back.out(2)' }
+    );
+
+    // Walk across planet surface (move right)
+    tl.to(astronaut, {
+      x: pSize * 0.45,
+      y: -pSize * 0.22,
+      duration: 1.2,
+      ease: 'power1.inOut',
+    });
+
+    // Plant flag
+    tl.to(flag, { opacity: 1, scale: 1, duration: 0.3, ease: 'back.out(3)' }, '-=0.1');
+    tl.fromTo(flag, { scaleY: 0 }, { scaleY: 1, duration: 0.3, ease: 'back.out(2)', transformOrigin: 'bottom' }, '<');
+
+    // Astronaut idle bounce
+    tl.to(astronaut, {
+      y: `-=${pSize * 0.04}`,
+      repeat: -1,
+      yoyo: true,
+      duration: 0.6,
+      ease: 'sine.inOut',
+    });
+
+    this._astronautEl = astronaut;
+    this._flagEl = flag;
+    this._astronautNode = node;
+  }
+
+  /** Astronaut re-boards rocket and rocket lifts off */
+  async _recallAstronaut() {
+    const astronaut = this._astronautEl;
+    const flag = this._flagEl;
+    const node = this._astronautNode;
+
+    if (!astronaut || !node) return;
+
+    // Kill idle animation
+    gsap.killTweensOf(astronaut);
+
+    const tl = gsap.timeline();
+
+    // Flag droops
+    if (flag) {
+      tl.to(flag, { opacity: 0, scaleY: 0.2, duration: 0.3, transformOrigin: 'bottom', ease: 'power2.in' }, 0);
+    }
+
+    // Walk back to rocket
+    tl.to(astronaut, {
+      x: 0,
+      y: 0,
+      duration: 0.9,
+      ease: 'power1.inOut',
+    }, 0.1);
+
+    // Board and disappear
+    tl.to(astronaut, {
+      scale: 0,
+      opacity: 0,
+      duration: 0.3,
+      ease: 'power2.in',
+    });
+
+    // Rocket lifts off
+    const parkedRocket = node.querySelector('.ss-rocket-parked');
+    if (parkedRocket) {
+      tl.to(parkedRocket, {
+        y: -60,
+        x: 20,
+        opacity: 0,
+        scale: 0.5,
+        rotation: 15,
+        duration: 0.7,
+        ease: 'power3.in',
+      });
+    }
+
+    await tl;
+
+    astronaut.remove();
+    flag?.remove();
+    this._astronautEl = null;
+    this._flagEl = null;
+    this._astronautNode = null;
+  }
+
+  /** Detailed astronaut SVG */
+  _createAstronautSVG(size) {
+    const s = size;
+    return `<svg width="${s}" height="${s * 1.6}" viewBox="0 0 20 32" xmlns="http://www.w3.org/2000/svg" class="ss-astronaut-svg">
+      <!-- Boots -->
+      <rect x="5" y="27" width="4" height="3" rx="1.5" fill="#BDC3C7"/>
+      <rect x="11" y="27" width="4" height="3" rx="1.5" fill="#BDC3C7"/>
+      <!-- Legs -->
+      <rect x="6" y="20" width="3" height="8" rx="1.5" fill="#ECF0F1"/>
+      <rect x="11" y="20" width="3" height="8" rx="1.5" fill="#ECF0F1"/>
+      <!-- Body suit -->
+      <rect x="4" y="12" width="12" height="10" rx="3" fill="#ECF0F1"/>
+      <!-- Backpack (life support) -->
+      <rect x="2" y="13" width="3" height="7" rx="1.5" fill="#BDC3C7"/>
+      <!-- Chest badge -->
+      <rect x="7.5" y="15" width="5" height="3" rx="1" fill="#3498DB" opacity="0.8"/>
+      <!-- Arms -->
+      <rect x="1" y="13" width="3" height="6" rx="1.5" fill="#ECF0F1"/>
+      <rect x="16" y="13" width="3" height="6" rx="1.5" fill="#ECF0F1"/>
+      <!-- Gloves -->
+      <circle cx="2.5" cy="19.5" r="1.8" fill="#BDC3C7"/>
+      <circle cx="17.5" cy="19.5" r="1.8" fill="#BDC3C7"/>
+      <!-- Neck ring -->
+      <rect x="7" y="10" width="6" height="2.5" rx="1.2" fill="#BDC3C7"/>
+      <!-- Helmet -->
+      <circle cx="10" cy="7" r="6" fill="#ECF0F1"/>
+      <!-- Visor -->
+      <ellipse cx="10" cy="7.5" rx="3.8" ry="3.2" fill="#2C3E50"/>
+      <!-- Visor shine -->
+      <ellipse cx="8.5" cy="6" rx="1.2" ry="0.8" fill="rgba(255,255,255,0.4)" transform="rotate(-20 8.5 6)"/>
+      <!-- Helmet rim -->
+      <circle cx="10" cy="7" r="6" fill="none" stroke="#BDC3C7" stroke-width="0.8"/>
+      <!-- Antenna -->
+      <line x1="13" y1="2" x2="15" y2="0" stroke="#BDC3C7" stroke-width="0.8"/>
+      <circle cx="15" cy="0" r="0.8" fill="#E74C3C"/>
+    </svg>`;
+  }
+
+  /** Flag SVG with waving flag */
+  _createFlagSVG() {
+    return `<svg width="16" height="20" viewBox="0 0 16 20" xmlns="http://www.w3.org/2000/svg">
+      <!-- Pole -->
+      <line x1="3" y1="1" x2="3" y2="19" stroke="#BDC3C7" stroke-width="1.2" stroke-linecap="round"/>
+      <!-- Flag -->
+      <path d="M3 2 Q9 4 15 3 Q9 7 3 8 Z" fill="#E74C3C"/>
+      <!-- Heart on flag -->
+      <path d="M7.5 4 C7.5 3.5 8 3 8.5 3.5 C9 3 9.5 3.5 9.5 4 C9.5 4.8 8.5 5.5 8.5 5.5 C8.5 5.5 7.5 4.8 7.5 4 Z"
+        fill="white" opacity="0.9"/>
+      <!-- Base -->
+      <ellipse cx="3" cy="19" rx="2.5" ry="0.8" fill="#95A5A6"/>
+    </svg>`;
   }
 
   /** Start continuous orbital motion with GSAP */

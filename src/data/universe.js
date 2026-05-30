@@ -22,7 +22,7 @@ export const UNIVERSE = {
       name: 'Childhood',
       subtitle: 'Scattered Stardust',
       fullName: 'Childhood — Scattered Stardust',
-      timeline: '2007 – 2019',
+      timeline: '2007 – 2018',
       locked: false,
 
       description: [
