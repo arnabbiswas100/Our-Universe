@@ -33,12 +33,16 @@ export class SpaceBackground {
     this.time = 0;
     this.running = false;
     this._dpr = Math.min(window.devicePixelRatio, 2);
+    this._lastTimestamp = 0;
 
-    // Offscreen canvas for static star layer (redrawn ~4fps)
+    // Offscreen canvas for static star layer (redrawn ~2fps)
     this._starCanvas = document.createElement('canvas');
     this._starCtx = this._starCanvas.getContext('2d');
     this._starDirty = true;
     this._starRedrawTimer = 0;
+
+    // Cached nebula gradients — recreated only on meaningful position drift
+    this._nebulaGradCache = [];
 
     this._resize();
     this._initStars(250);
@@ -170,30 +174,35 @@ export class SpaceBackground {
     this._lastShootingStar = 0;
     this._lastComet = 0;
     this._lastAlienShip = 0;
-    this._animate();
+    this._lastTimestamp = 0;
+    requestAnimationFrame((ts) => this._animate(ts));
   }
 
   stop() {
     this.running = false;
   }
 
-  _animate() {
+  _animate(timestamp) {
     if (!this.running) return;
-    requestAnimationFrame(() => this._animate());
+    requestAnimationFrame((ts) => this._animate(ts));
 
-    this.time += 0.016;
+    // Real delta-time — prevents drift on slow frames
+    const dt = this._lastTimestamp ? Math.min((timestamp - this._lastTimestamp) / 1000, 0.05) : 0.016;
+    this._lastTimestamp = timestamp;
+    this.time += dt;
+
     const ctx = this.ctx;
 
-    // Background gradient (solid fill — cheaper than gradient every frame)
+    // Background solid fill
     ctx.fillStyle = '#0C1035';
     ctx.fillRect(0, 0, this.w, this.h);
 
     // Nebula clouds
-    this._drawNebulaClouds(ctx);
+    this._drawNebulaClouds(ctx, dt);
 
-    // Stars — rendered to offscreen canvas at reduced rate (~4fps)
-    this._starRedrawTimer += 0.016;
-    if (this._starDirty || this._starRedrawTimer > 0.25) {
+    // Stars — rendered to offscreen canvas at ~2fps (imperceptible at this rate)
+    this._starRedrawTimer += dt;
+    if (this._starDirty || this._starRedrawTimer > 0.5) {
       this._renderStarsOffscreen();
       this._starRedrawTimer = 0;
       this._starDirty = false;
@@ -201,41 +210,42 @@ export class SpaceBackground {
     ctx.drawImage(this._starCanvas, 0, 0, this.w, this.h);
 
     // Floating particles
-    this._drawParticles(ctx);
+    this._drawParticles(ctx, dt);
 
     // Alien ships
-    this._drawAlienShips(ctx);
+    this._drawAlienShips(ctx, dt);
 
     // Shooting stars
-    this._drawShootingStars(ctx);
+    this._drawShootingStars(ctx, dt);
 
     // Comets
-    this._drawComets(ctx);
+    this._drawComets(ctx, dt);
 
     // Spawn shooting star periodically
-    this._lastShootingStar += 0.016;
+    this._lastShootingStar += dt;
     if (this._lastShootingStar > 1.5 + Math.random() * 2) {
       this._spawnShootingStar();
       this._lastShootingStar = 0;
     }
 
     // Spawn comet periodically (cap at 3)
-    this._lastComet += 0.016;
+    this._lastComet += dt;
     if (this._lastComet > 8 + Math.random() * 7 && this.comets.length < 3) {
       this._spawnComet();
       this._lastComet = 0;
     }
 
-    // Alien ships — cap at 6 simultaneous
-    this._lastAlienShip += 0.016;
-    if (this._lastAlienShip > 3 + Math.random() * 3 && this.alienShips.length < 6) {
+    // Alien ships — cap at 4 simultaneous
+    this._lastAlienShip += dt;
+    if (this._lastAlienShip > 3 + Math.random() * 3 && this.alienShips.length < 4) {
       this._spawnAlienShip();
       this._lastAlienShip = 0;
     }
   }
 
-  _drawNebulaClouds(ctx) {
-    for (const cloud of this.nebulaClouds) {
+  _drawNebulaClouds(ctx, dt) {
+    for (let ci = 0; ci < this.nebulaClouds.length; ci++) {
+      const cloud = this.nebulaClouds[ci];
       cloud.x += cloud.driftX;
       cloud.y += cloud.driftY;
 
@@ -248,12 +258,20 @@ export class SpaceBackground {
       const r = cloud.radius * pulse;
       const alpha = cloud.alpha * (0.8 + Math.sin(this.time * cloud.pulseSpeed * 0.5) * 0.2);
 
-      const grad = ctx.createRadialGradient(cloud.x, cloud.y, 0, cloud.x, cloud.y, r);
-      grad.addColorStop(0, `rgba(${cloud.color.r}, ${cloud.color.g}, ${cloud.color.b}, ${alpha})`);
-      grad.addColorStop(0.5, `rgba(${cloud.color.r}, ${cloud.color.g}, ${cloud.color.b}, ${alpha * 0.4})`);
-      grad.addColorStop(1, `rgba(${cloud.color.r}, ${cloud.color.g}, ${cloud.color.b}, 0)`);
+      // Re-use cached gradient if position hasn't drifted significantly
+      const cache = this._nebulaGradCache[ci];
+      const dx = cloud.x - (cache ? cache.cx : Infinity);
+      const dy = cloud.y - (cache ? cache.cy : Infinity);
+      const rDiff = Math.abs(r - (cache ? cache.r : 0));
+      if (!cache || dx * dx + dy * dy > 4 || rDiff > 1) {
+        const grad = ctx.createRadialGradient(cloud.x, cloud.y, 0, cloud.x, cloud.y, r);
+        grad.addColorStop(0, `rgba(${cloud.color.r},${cloud.color.g},${cloud.color.b},${alpha.toFixed(3)})`);
+        grad.addColorStop(0.5, `rgba(${cloud.color.r},${cloud.color.g},${cloud.color.b},${(alpha * 0.4).toFixed(3)})`);
+        grad.addColorStop(1, `rgba(${cloud.color.r},${cloud.color.g},${cloud.color.b},0)`);
+        this._nebulaGradCache[ci] = { grad, cx: cloud.x, cy: cloud.y, r };
+      }
 
-      ctx.fillStyle = grad;
+      ctx.fillStyle = this._nebulaGradCache[ci].grad;
       ctx.fillRect(cloud.x - r, cloud.y - r, r * 2, r * 2);
     }
   }
@@ -282,8 +300,8 @@ export class SpaceBackground {
     }
   }
 
-  _drawParticles(ctx) {
-    // Batch all particles into fewer draw calls by alpha grouping
+  _drawParticles(ctx, dt) {
+    // Batch all particles into a single path / fill call
     ctx.fillStyle = 'rgba(200, 190, 255, 0.25)';
     ctx.beginPath();
     for (const p of this.particles) {
@@ -298,7 +316,7 @@ export class SpaceBackground {
     ctx.fill();
   }
 
-  _drawShootingStars(ctx) {
+  _drawShootingStars(ctx, dt) {
     for (let i = this.shootingStars.length - 1; i >= 0; i--) {
       const ss = this.shootingStars[i];
       ss.x += ss.vx;
@@ -313,15 +331,19 @@ export class SpaceBackground {
       const tailX = ss.x - ss.dirX * ss.length;
       const tailY = ss.y - ss.dirY * ss.length;
 
-      const grad = ctx.createLinearGradient(tailX, tailY, ss.x, ss.y);
-      grad.addColorStop(0, 'rgba(255,255,255,0)');
-      grad.addColorStop(0.7, `rgba(200,200,255,${(ss.life * 0.5).toFixed(2)})`);
-      grad.addColorStop(1, `rgba(255,255,255,${ss.life.toFixed(2)})`);
+      // Reuse gradient object — only recreate when position shifts
+      if (!ss._grad || Math.abs(ss.x - ss._gx) > 2 || Math.abs(ss.y - ss._gy) > 2) {
+        const g = ctx.createLinearGradient(tailX, tailY, ss.x, ss.y);
+        g.addColorStop(0, 'rgba(255,255,255,0)');
+        g.addColorStop(0.7, `rgba(200,200,255,${(ss.life * 0.5).toFixed(2)})`);
+        g.addColorStop(1, `rgba(255,255,255,${ss.life.toFixed(2)})`);
+        ss._grad = g; ss._gx = ss.x; ss._gy = ss.y;
+      }
 
       ctx.beginPath();
       ctx.moveTo(tailX, tailY);
       ctx.lineTo(ss.x, ss.y);
-      ctx.strokeStyle = grad;
+      ctx.strokeStyle = ss._grad;
       ctx.lineWidth = ss.width * ss.life;
       ctx.stroke();
 
@@ -377,7 +399,7 @@ export class SpaceBackground {
     });
   }
 
-  _drawComets(ctx) {
+  _drawComets(ctx, dt) {
     for (let i = this.comets.length - 1; i >= 0; i--) {
       const c = this.comets[i];
       const wobble = Math.sin(this.time * c.wobbleSpeed + c.wobblePhase) * 0.3;
@@ -396,28 +418,32 @@ export class SpaceBackground {
       const alpha = Math.min(1, c.life);
       const tLen = c.trail.length;
 
-      // Draw tail — skip every other segment for perf
+      // Draw entire tail as a single gradient stroke (1 draw call vs ~15)
       if (tLen > 2) {
+        const tip = c.trail[tLen - 1];
+        const base = c.trail[0];
+        const tailGrad = ctx.createLinearGradient(base.x, base.y, tip.x, tip.y);
+        tailGrad.addColorStop(0, `rgba(${c.tailStr},0)`);
+        tailGrad.addColorStop(1, `rgba(${c.tailStr},${(alpha * 0.55).toFixed(2)})`);
+
+        ctx.beginPath();
+        ctx.moveTo(c.trail[0].x, c.trail[0].y);
+        for (let j = 1; j < tLen; j++) ctx.lineTo(c.trail[j].x, c.trail[j].y);
+        ctx.strokeStyle = tailGrad;
+        ctx.lineWidth = c.tailWidth * 0.8;
         ctx.lineCap = 'round';
-        for (let j = 2; j < tLen; j += 2) {
-          const t = j / tLen;
-          const pt = c.trail[j];
-          const prevPt = c.trail[j - 2];
-          ctx.beginPath();
-          ctx.moveTo(prevPt.x, prevPt.y);
-          ctx.lineTo(pt.x, pt.y);
-          ctx.strokeStyle = `rgba(${c.tailStr},${(t * t * alpha * 0.6).toFixed(2)})`;
-          ctx.lineWidth = c.tailWidth * t;
-          ctx.stroke();
-        }
+        ctx.stroke();
       }
 
-      // Head glow — single radial gradient
+      // Head glow — cached radial gradient
       const glowR = c.headRadius * 4;
-      const glowGrad = ctx.createRadialGradient(c.x, c.y, 0, c.x, c.y, glowR);
-      glowGrad.addColorStop(0, `rgba(${c.headStr},${(alpha * 0.3).toFixed(2)})`);
-      glowGrad.addColorStop(1, `rgba(${c.headStr},0)`);
-      ctx.fillStyle = glowGrad;
+      if (!c._glowGrad || Math.abs(c.x - c._glowX) > 2 || Math.abs(c.y - c._glowY) > 2) {
+        const g = ctx.createRadialGradient(c.x, c.y, 0, c.x, c.y, glowR);
+        g.addColorStop(0, `rgba(${c.headStr},${(alpha * 0.3).toFixed(2)})`);
+        g.addColorStop(1, `rgba(${c.headStr},0)`);
+        c._glowGrad = g; c._glowX = c.x; c._glowY = c.y;
+      }
+      ctx.fillStyle = c._glowGrad;
       ctx.fillRect(c.x - glowR, c.y - glowR, glowR * 2, glowR * 2);
 
       // Bright core
@@ -475,7 +501,7 @@ export class SpaceBackground {
     });
   }
 
-  _drawAlienShips(ctx) {
+  _drawAlienShips(ctx, dt) {
     for (let i = this.alienShips.length - 1; i >= 0; i--) {
       const s = this.alienShips[i];
       s.x += s.vx;

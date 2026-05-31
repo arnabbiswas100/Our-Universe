@@ -11,6 +11,15 @@
   box-sizing: border-box;
 }
 
+/* Force custom cursor on EVERY element — prevents browser hand/pointer override */
+*, *::before, *::after,
+a, button, label, select, summary,
+[role="button"], [role="link"], [role="tab"],
+[tabindex], [onclick],
+input[type="button"], input[type="submit"], input[type="reset"] {
+  cursor: none !important;
+}
+
 :root {
   --font-display: 'Fredoka', 'Comic Sans MS', cursive;
   --font-body: 'Nunito', 'Segoe UI', sans-serif;
@@ -47,7 +56,119 @@ html, body {
   color: var(--text-white);
   font-family: var(--font-body);
   -webkit-font-smoothing: antialiased;
+  cursor: none; /* Custom cursor replaces default */
 }
+
+/* ─── Custom Space Cursor ─── */
+#cursor-dot {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow:
+    0 0 6px rgba(167, 139, 250, 1),
+    0 0 12px rgba(123, 94, 255, 0.8),
+    0 0 24px rgba(123, 94, 255, 0.4);
+  pointer-events: none;
+  z-index: 99999;
+  transform: translate(-50%, -50%);
+  transition: width 0.15s ease, height 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+  will-change: transform;
+}
+
+#cursor-ring {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(123, 94, 255, 0.6);
+  box-shadow:
+    0 0 8px rgba(123, 94, 255, 0.3),
+    inset 0 0 8px rgba(123, 94, 255, 0.1);
+  pointer-events: none;
+  z-index: 99998;
+  transform: translate(-50%, -50%);
+  transition:
+    width 0.25s cubic-bezier(0.25, 0.8, 0.25, 1),
+    height 0.25s cubic-bezier(0.25, 0.8, 0.25, 1),
+    border-color 0.25s ease,
+    box-shadow 0.25s ease,
+    opacity 0.25s ease;
+  will-change: transform;
+}
+
+/* Crosshair tick marks on the ring */
+#cursor-ring::before,
+#cursor-ring::after {
+  content: '';
+  position: absolute;
+  background: rgba(123, 94, 255, 0.7);
+  border-radius: 1px;
+}
+#cursor-ring::before {
+  /* Horizontal ticks */
+  top: 50%;
+  left: -4px;
+  right: -4px;
+  height: 1px;
+  transform: translateY(-50%);
+  -webkit-mask: linear-gradient(90deg, #fff 20%, transparent 35%, transparent 65%, #fff 80%);
+  mask: linear-gradient(90deg, #fff 20%, transparent 35%, transparent 65%, #fff 80%);
+}
+#cursor-ring::after {
+  /* Vertical ticks */
+  left: 50%;
+  top: -4px;
+  bottom: -4px;
+  width: 1px;
+  transform: translateX(-50%);
+  -webkit-mask: linear-gradient(180deg, #fff 20%, transparent 35%, transparent 65%, #fff 80%);
+  mask: linear-gradient(180deg, #fff 20%, transparent 35%, transparent 65%, #fff 80%);
+}
+
+/* Hover state — applied via JS class */
+body.cursor-hover #cursor-dot {
+  width: 12px;
+  height: 12px;
+  background: var(--accent-pink);
+  box-shadow:
+    0 0 8px rgba(255, 110, 199, 1),
+    0 0 20px rgba(255, 110, 199, 0.7),
+    0 0 40px rgba(255, 110, 199, 0.3);
+}
+
+body.cursor-hover #cursor-ring {
+  width: 52px;
+  height: 52px;
+  border-color: rgba(255, 110, 199, 0.7);
+  box-shadow:
+    0 0 14px rgba(255, 110, 199, 0.4),
+    inset 0 0 14px rgba(255, 110, 199, 0.1);
+}
+
+/* Click state */
+body.cursor-click #cursor-dot {
+  width: 5px;
+  height: 5px;
+}
+
+body.cursor-click #cursor-ring {
+  width: 28px;
+  height: 28px;
+  opacity: 0.5;
+}
+
+/* Hide cursor when it leaves the window */
+body.cursor-hidden #cursor-dot,
+body.cursor-hidden #cursor-ring {
+  opacity: 0;
+}
+
 
 /* ─── Global Glass Frame ─── */
 #global-glass-frame {
@@ -605,14 +726,8 @@ html, body {
   animation: bh-halo-pulse 2.8s ease-in-out infinite 0.9s;
 }
 
-.bh-pulse-halo--3 {
-  z-index: 1;
-  background: radial-gradient(circle,
-    rgba(60, 40, 160, 0.07) 0%,
-    rgba(40, 20, 120, 0.03) 40%,
-    transparent 65%);
-  animation: bh-halo-pulse 2.8s ease-in-out infinite 1.8s;
-}
+/* bh-pulse-halo--3 removed — outermost halo was barely visible (< 7% opacity)
+   and cost one extra animated radial gradient per frame */
 
 @keyframes bh-halo-pulse {
   0%, 100% { transform: translate(-50%, -50%) scale(0.92); opacity: 0.5; }
@@ -676,7 +791,7 @@ html, body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  will-change: transform;
+  /* will-change removed — only orbit arms need GPU promotion */
 }
 
 .bh-era-node.locked {
@@ -826,7 +941,7 @@ html, body {
   border: 1px solid rgba(123, 94, 255, 0.25);
   border-radius: 10px;
   overflow: hidden;
-  backdrop-filter: blur(6px);
+  backdrop-filter: blur(3px);
   box-shadow:
     0 4px 20px rgba(0, 0, 0, 0.5),
     0 0 30px rgba(123, 94, 255, 0.08),
@@ -1189,7 +1304,7 @@ html, body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  will-change: transform;
+  /* will-change removed — only orbit arms need GPU promotion */
 }
 
 /* ── Planet Body ── */

@@ -9,5 +9,21 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     assetsDir: 'assets',
+    cssCodeSplit: false,
+    minify: 'terser',
+    terserOptions: {
+      compress: {
+        drop_console: true,
+        drop_debugger: true,
+        pure_funcs: ['console.log', 'console.warn'],
+      },
+    },
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          vendor: ['gsap'],
+        },
+      },
+    },
   },
 });

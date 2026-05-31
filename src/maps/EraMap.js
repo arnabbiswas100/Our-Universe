@@ -60,12 +60,7 @@ export class EraMap {
     const blackHole = document.createElement('div');
     blackHole.className = 'bh-core';
     blackHole.innerHTML = `
-      <!-- Outer pulse halo 3 (largest) -->
-      <div class="bh-pulse-halo bh-pulse-halo--3" style="
-        width: ${bhSize * 3.6}px;
-        height: ${bhSize * 3.6}px;
-      "></div>
-      <!-- Outer pulse halo 2 -->
+      <!-- Outer pulse halo 2 (largest remaining) -->
       <div class="bh-pulse-halo bh-pulse-halo--2" style="
         width: ${bhSize * 2.8}px;
         height: ${bhSize * 2.8}px;
@@ -483,13 +478,15 @@ export class EraMap {
     this._graphData = [];
     for (let i = 0; i < 20; i++) this._graphData.push(15 + Math.random() * 20);
 
+    // Cache DOM refs once — avoid repeated querySelector every second
+    const clock = monitorEl.querySelector('#bh-clock');
+    const dateEl = monitorEl.querySelector('#bh-date');
+    const dayEl = monitorEl.querySelector('#bh-day');
+    const graphLine = monitorEl.querySelector('#bh-graph-line');
+    const graphFill = monitorEl.querySelector('#bh-graph-fill');
+
     const update = () => {
       const now = new Date();
-      const clock = monitorEl.querySelector('#bh-clock');
-      const dateEl = monitorEl.querySelector('#bh-date');
-      const dayEl = monitorEl.querySelector('#bh-day');
-      const graphLine = monitorEl.querySelector('#bh-graph-line');
-      const graphFill = monitorEl.querySelector('#bh-graph-fill');
 
       if (clock) clock.textContent = now.toLocaleTimeString('en-US', { hour12: false });
       if (dateEl) dateEl.textContent = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });

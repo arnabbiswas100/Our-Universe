@@ -15,6 +15,83 @@ import { StoryOverlay } from './ui/StoryOverlay.js';
 import { NavigationUI } from './ui/NavigationUI.js';
 import { warpTransition } from './utils/animations.js';
 
+// ── Custom Space Cursor ──────────────────────────────────────────
+class CursorController {
+  constructor() {
+    this.dot  = document.getElementById('cursor-dot');
+    this.ring = document.getElementById('cursor-ring');
+    if (!this.dot || !this.ring) return;
+
+    // Actual pointer position (updated on mousemove — instant)
+    this.mx = -100; this.my = -100;
+    // Ring lerp position (lags slightly behind)
+    this.rx = -100; this.ry = -100;
+
+    this._bindEvents();
+    this._loop();
+  }
+
+  _bindEvents() {
+    // Move — dot snaps, ring lerps in rAF
+    document.addEventListener('mousemove', (e) => {
+      this.mx = e.clientX;
+      this.my = e.clientY;
+      this.dot.style.left = e.clientX + 'px';
+      this.dot.style.top  = e.clientY + 'px';
+      document.body.classList.remove('cursor-hidden');
+    }, { passive: true });
+
+    // Hover detection — covers all interactive elements
+    const HOVER_SEL = 'a, button, [role="button"], input, select, textarea, label, '
+      + '.bh-era-node, .ss-planet-node, .bh-monitor, .bh-astronaut-wrap, '
+      + '.landing-begin, .story-close, #nav-back, #nav-mute, .era-desc-enter, '
+      + '[style*="cursor: pointer"], [style*="cursor:pointer"]';
+
+    document.addEventListener('mouseover', (e) => {
+      if (e.target.closest(HOVER_SEL)) {
+        document.body.classList.add('cursor-hover');
+      }
+    }, { passive: true });
+
+    document.addEventListener('mouseout', (e) => {
+      if (e.target.closest(HOVER_SEL)) {
+        document.body.classList.remove('cursor-hover');
+      }
+    }, { passive: true });
+
+    // Click compress
+    document.addEventListener('mousedown', () => {
+      document.body.classList.add('cursor-click');
+    }, { passive: true });
+
+    document.addEventListener('mouseup', () => {
+      document.body.classList.remove('cursor-click');
+    }, { passive: true });
+
+    // Hide when leaving the window
+    document.addEventListener('mouseleave', () => {
+      document.body.classList.add('cursor-hidden');
+    }, { passive: true });
+
+    document.addEventListener('mouseenter', () => {
+      document.body.classList.remove('cursor-hidden');
+    }, { passive: true });
+  }
+
+  _loop() {
+    // Lerp ring toward pointer — 12% per frame (~60fps) for silky trail
+    this.rx += (this.mx - this.rx) * 0.12;
+    this.ry += (this.my - this.ry) * 0.12;
+    this.ring.style.left = this.rx + 'px';
+    this.ring.style.top  = this.ry + 'px';
+    requestAnimationFrame(() => this._loop());
+  }
+}
+
+new CursorController();
+// ─────────────────────────────────────────────────────────────────
+
+
 /**
  * OurUniverse — 2D Cartoon Space Level-Select App
  *
