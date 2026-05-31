@@ -20,10 +20,11 @@ export default defineConfig({
     },
     rollupOptions: {
       output: {
-        manualChunks: {
-          vendor: ['gsap'],
+        manualChunks: (id) => {
+          if (id.includes('gsap')) return 'vendor';
         },
       },
     },
   },
 });
+
