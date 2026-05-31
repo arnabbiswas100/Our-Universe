@@ -136,6 +136,17 @@ export class EraMap {
     this.nodesContainer.appendChild(monitor);
     this._startMonitor(monitor);
 
+    // ── Detailed Space Station (middle-right) ──
+    const stationWrap = document.createElement('div');
+    stationWrap.className = 'bh-space-station-wrap';
+    stationWrap.innerHTML = this._createSpaceStationHTML();
+    this.nodesContainer.appendChild(stationWrap);
+
+    stationWrap.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this._triggerStationSparks(stationWrap);
+    });
+
     // ── Orbit Rings & Era Stars ──
     eras.forEach((era, i) => {
       const orbitRadius = baseOrbit + i * orbitStep;
@@ -708,5 +719,133 @@ export class EraMap {
     this.nodesContainer.innerHTML = '';
     this.svgContainer.innerHTML = '';
     this.nodes = [];
+  }
+
+  // ── Detailed Space Station ──
+  _createSpaceStationHTML() {
+    return `
+      <div class="station-structure">
+        <!-- Antenna & Radar -->
+        <div class="station-antenna">
+          <div class="antenna-bulb"></div>
+          <div class="radar-dish"></div>
+        </div>
+
+        <!-- Glowing Dome with Inner Core -->
+        <div class="station-dome">
+          <div class="dome-inner-core"></div>
+          <div class="dome-glow"></div>
+        </div>
+
+        <!-- Main Body & Piping -->
+        <div class="station-core">
+          <div class="neon-pipe pipe-left"></div>
+          <div class="neon-pipe pipe-right"></div>
+          <div class="station-window"></div>
+          <div class="station-window"></div>
+          <div class="station-window"></div>
+        </div>
+        
+        <!-- Side Pods -->
+        <div class="station-pod pod-left">
+          <div class="pod-light"></div>
+        </div>
+        <div class="station-pod pod-right">
+          <div class="pod-light"></div>
+        </div>
+        
+        <!-- Rotating Gravity Ring with Nodes -->
+        <div class="station-ring">
+          <div class="ring-node node-1"></div>
+          <div class="ring-node node-2"></div>
+          <div class="ring-node node-3"></div>
+        </div>
+        
+        <!-- Solar Panels with sweeping reflections -->
+        <div class="station-panels left">
+          <div class="panel-segment"><div class="panel-sweep"></div></div>
+          <div class="panel-segment"><div class="panel-sweep"></div></div>
+          <div class="panel-segment"><div class="panel-sweep"></div></div>
+        </div>
+        <div class="station-panels right">
+          <div class="panel-segment"><div class="panel-sweep"></div></div>
+          <div class="panel-segment"><div class="panel-sweep"></div></div>
+          <div class="panel-segment"><div class="panel-sweep"></div></div>
+        </div>
+        
+        <!-- Docking Bay -->
+        <div class="docking-bay"></div>
+        
+        <!-- Base Thruster -->
+        <div class="station-thruster">
+          <div class="thruster-flame"></div>
+        </div>
+      </div>
+    `;
+  }
+
+  _triggerStationSparks(station) {
+    const struct = station.querySelector('.station-structure');
+    
+    // Kill any existing animations to prevent conflicts instead of hard-locking
+    gsap.killTweensOf(struct);
+
+    // 1. Violent Vibration (chaotic shake for 2 seconds)
+    gsap.to(struct, {
+      x: () => Math.random() * 12 - 6,
+      y: () => Math.random() * 12 - 6,
+      rotation: () => Math.random() * 10 - 5,
+      duration: 0.05,
+      repeat: 40,
+      yoyo: true,
+      repeatRefresh: true, // Ensures a new random value every shake!
+      onComplete: () => {
+        gsap.to(struct, { x: 0, y: 0, rotation: 0, duration: 0.1 });
+      }
+    });
+
+    // 2. Electric Sparks (continuous burst)
+    const numSparks = 40; 
+    const rect = station.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+
+    for (let i = 0; i < numSparks; i++) {
+      const spark = document.createElement('div');
+      spark.className = 'station-spark';
+      spark.style.position = 'fixed';
+      spark.style.left = `${cx}px`;
+      spark.style.top = `${cy}px`;
+      document.body.appendChild(spark);
+
+      const angle = Math.random() * Math.PI * 2;
+      const distance = Math.random() * 100 + 60; 
+      
+      // Use fromTo to guarantee the start values don't get messed up by delays
+      gsap.fromTo(spark, 
+        {
+          x: 0,
+          y: 0,
+          opacity: 0,
+          scaleX: 0.1,
+          scaleY: 0.1,
+          rotation: angle * (180 / Math.PI)
+        },
+        {
+          x: Math.cos(angle) * distance,
+          y: Math.sin(angle) * distance,
+          opacity: 1, // Pop in
+          scaleX: Math.random() * 2 + 1,
+          scaleY: Math.random() * 0.5 + 0.2,
+          duration: Math.random() * 0.4 + 0.3,
+          delay: Math.random() * 1.5, // Staggered over 1.5s
+          ease: 'power2.out',
+          onComplete: () => {
+            // Fade out quickly at the end
+            gsap.to(spark, { opacity: 0, duration: 0.1, onComplete: () => spark.remove() });
+          }
+        }
+      );
+    }
   }
 }
