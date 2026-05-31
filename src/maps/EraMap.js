@@ -59,6 +59,8 @@ export class EraMap {
     // ── Black Hole ──
     const blackHole = document.createElement('div');
     blackHole.className = 'bh-core';
+    blackHole.style.cursor = 'pointer';
+    blackHole.title = 'Click the black hole...';
     blackHole.innerHTML = `
       <!-- Outer pulse halo 2 (largest remaining) -->
       <div class="bh-pulse-halo bh-pulse-halo--2" style="
@@ -85,7 +87,16 @@ export class EraMap {
         width: ${bhSize * 1.6}px;
         height: ${bhSize * 1.6}px;
       "></div>
+      <!-- Warp vortex ring (shown on click) -->
+      <div class="bh-warp-ring" style="width:${bhSize * 4}px;height:${bhSize * 4}px;"></div>
     `;
+
+    // Click → warp suck animation
+    blackHole.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this._triggerWarp(system, blackHole);
+    });
+
     system.appendChild(blackHole);
 
     // ── Floating Astronaut (bottom-right) ──
@@ -282,6 +293,126 @@ export class EraMap {
   _killOrbits() {
     this.orbitTweens.forEach(t => t.kill());
     this.orbitTweens = [];
+  }
+
+  /** Black hole warp suck animation */
+  _triggerWarp(system, blackHole) {
+    if (this._warping) return; // prevent re-trigger
+    this._warping = true;
+
+    const arms    = system.querySelectorAll('.bh-orbit-arm');
+    const rings   = system.querySelectorAll('.bh-orbit-ring');
+    const stars   = system.querySelectorAll('.bh-era-node');
+    const horizon = blackHole.querySelector('.bh-event-horizon');
+    const photon  = blackHole.querySelector('.bh-photon-ring');
+    const lensing = blackHole.querySelector('.bh-lensing');
+    const warpRing = blackHole.querySelector('.bh-warp-ring');
+
+    // Pause orbits
+    this.orbitTweens.forEach(t => t.pause());
+
+    const tl = gsap.timeline({
+      onComplete: () => {
+        // Burst back out
+        const burst = gsap.timeline({
+          onComplete: () => {
+            this._warping = false;
+
+            // Kill old paused tweens — their internal angle state is stale
+            this._killOrbits();
+
+            // Restart orbits from the CURRENT visual rotation of each arm
+            // so there is zero jump between the burst animation and continuous orbit
+            this.nodes.forEach(({ orbitArm, element, orbitDuration }) => {
+              // gsap.getProperty reads the live computed rotation from the element
+              const currentAngle = gsap.getProperty(orbitArm, 'rotation') || 0;
+              const armTween = gsap.to({ angle: currentAngle }, {
+                angle: currentAngle + 360,
+                duration: orbitDuration,
+                ease: 'none',
+                repeat: -1,
+                onUpdate: function () {
+                  const a = this.targets()[0].angle;
+                  orbitArm.style.transform = `translate(-50%, -50%) rotate(${a}deg)`;
+                  element.style.transform  = `translate(-50%, -50%) rotate(${-a}deg)`;
+                },
+              });
+              this.orbitTweens.push(armTween);
+            });
+          }
+        });
+
+        // Reset warp ring
+        gsap.set(warpRing, { scale: 0, opacity: 0, rotation: 0 });
+
+        // Black hole back to normal
+        burst.to([horizon, photon, lensing], {
+          scale: 1, opacity: 1, duration: 0.4, ease: 'back.out(2)', stagger: 0.05
+        }, 0);
+
+        // Stars burst back out — animate each arm to its node's startAngle
+        burst.fromTo(arms,
+          { scale: 0, opacity: 0, rotation: (i) => -720 + i * 30 },
+          {
+            scale: 1, opacity: 1,
+            rotation: (i) => { const n = this.nodes[i]; return n ? n.startAngle : i * 51; },
+            duration: 0.9, stagger: 0.06, ease: 'back.out(1.8)'
+          }, 0.1
+        );
+
+        burst.to(rings, {
+          scale: 1, opacity: 1, duration: 0.5, stagger: 0.04, ease: 'power2.out'
+        }, 0.1);
+
+        burst.to(stars, {
+          scale: 1, opacity: 1, duration: 0.5, stagger: 0.05, ease: 'back.out(2)'
+        }, 0.2);
+      }
+    });
+
+    // 1. Warp ring spins outward
+    tl.fromTo(warpRing,
+      { scale: 0.2, opacity: 0, rotation: 0 },
+      { scale: 1.2, opacity: 1, rotation: 270, duration: 0.6, ease: 'power2.out' }
+    , 0);
+
+    // 2. Black hole swells
+    tl.to([horizon, photon, lensing], {
+      scale: 1.35, duration: 0.4, ease: 'power2.inOut', stagger: 0.04
+    }, 0);
+
+    // 3. Stars spiral into center
+    tl.to(arms, {
+      scale: 0,
+      rotation: '+=540',
+      opacity: 0,
+      duration: 0.75,
+      stagger: { amount: 0.3, from: 'end' },
+      ease: 'power3.in',
+      transformOrigin: '50% 50%',
+    }, 0.15);
+
+    tl.to(stars, {
+      scale: 0, opacity: 0, duration: 0.4, stagger: 0.05, ease: 'power2.in'
+    }, 0.15);
+
+    tl.to(rings, {
+      scale: 0, opacity: 0, duration: 0.4, stagger: 0.04, ease: 'power2.in'
+    }, 0.2);
+
+    // 4. Warp ring collapses inward fast
+    tl.to(warpRing, {
+      scale: 0, opacity: 0, rotation: '+=360', duration: 0.35, ease: 'power3.in'
+    }, 0.7);
+
+    // 5. Black hole singularity pulse + shrink back
+    tl.to([horizon, photon, lensing], {
+      scale: 0.6, duration: 0.2, ease: 'power3.in'
+    }, 0.75);
+
+    tl.to([horizon, photon, lensing], {
+      scale: 1.5, duration: 0.15, ease: 'power1.out'
+    }, 0.95);
   }
 
   async _animateEntrance() {
@@ -529,6 +660,7 @@ export class EraMap {
   async exit() {
     this._killOrbits();
     this._stopMonitor();
+    this._warping = false;
 
     const system = this.nodesContainer.querySelector('.bh-system');
     if (!system) {
