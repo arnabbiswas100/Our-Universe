@@ -22,6 +22,13 @@ export class NavigationUI {
         this.muteBtn.textContent = muted ? '🔇' : '🔊';
       }
     });
+
+    this.locationLabel.addEventListener('click', (e) => {
+      // Only do it for the main title, not the subtitle
+      if (!this.locationLabel.classList.contains('nav-title-sub')) {
+        this._triggerHearts(e);
+      }
+    });
   }
 
   show(location, showBack = true) {
@@ -60,5 +67,67 @@ export class NavigationUI {
         gsap.to(this.locationLabel, { opacity: 1, duration: 0.15 });
       }
     });
+  }
+
+  _triggerHearts(e) {
+    if (this._heartAnimating) return;
+    this._heartAnimating = true;
+
+    const rect = this.locationLabel.getBoundingClientRect();
+    const xCenter = rect.left + rect.width / 2;
+    const yCenter = rect.top + rect.height / 2;
+
+    const heart = document.createElement('div');
+    heart.textContent = '💜';
+    heart.style.position = 'fixed';
+    heart.style.left = `${xCenter}px`;
+    heart.style.top = `${yCenter}px`;
+    heart.style.fontSize = '3.5rem';
+    heart.style.pointerEvents = 'none';
+    heart.style.zIndex = 20; // just behind the nav ui if it goes back up
+    heart.style.transform = 'translate(-50%, -50%) scale(0)';
+    document.body.appendChild(heart);
+
+    const tl = gsap.timeline({
+      onComplete: () => {
+        heart.remove();
+        this._heartAnimating = false;
+      }
+    });
+
+    // 1. Pop out and move down below the card slowly
+    tl.to(heart, {
+      y: 70, // move down relative to start
+      scale: 1,
+      duration: 0.8,
+      ease: 'power2.out'
+    });
+
+    // 2. Jiggle (rotate back and forth)
+    tl.to(heart, {
+      rotation: 15,
+      duration: 0.1,
+      yoyo: true,
+      repeat: 7,
+      ease: 'sine.inOut'
+    });
+    
+    // Ensure rotation is 0 before retracting
+    tl.to(heart, { rotation: 0, duration: 0.1 });
+
+    // 3. Move back up to the card and shrink away
+    tl.to(heart, {
+      y: 0,
+      scale: 0,
+      opacity: 0,
+      duration: 0.6,
+      ease: 'back.in(1.5)'
+    });
+
+    // Add a little pop effect to the card itself when clicked
+    gsap.fromTo(this.locationLabel, 
+      { scale: 1.05 },
+      { scale: 1, duration: 0.3, ease: 'back.out(2)' }
+    );
   }
 }
