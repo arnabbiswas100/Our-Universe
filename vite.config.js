@@ -9,19 +9,6 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     assetsDir: 'assets',
-    cssCodeSplit: false,
-    minify: 'esbuild',
-    esbuildOptions: {
-      drop: ['console', 'debugger'],
-    },
-    rollupOptions: {
-      output: {
-        manualChunks: (id) => {
-          if (id.includes('gsap')) return 'vendor';
-        },
-      },
-    },
   },
 });
-
 
