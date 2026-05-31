@@ -1,18 +1,18 @@
 const SPACE_QUOTES = [
-  "Look up at the stars and not down at your feet.",
-  "The universe is under no obligation to make sense to you.",
-  "We are all in the gutter, but some of us are looking at the stars.",
+  "Dont click selfies, you'll scare your phone.",
+  "Pasta banabo, toke dekhiye dekhiye khabo.",
+  "Pizza Khabi?? Kine kheye ne.",
   "To the mind that is still, the whole universe surrenders.",
-  "Somewhere, something incredible is waiting to be known.",
-  "The cosmos is within us. We are made of star-stuff.",
-  "Not only are we in the universe, the universe is in us.",
-  "Space is for everybody. It's not just for a few people in science or math.",
-  "Equipped with his five senses, man explores the universe around him and calls the adventure Science.",
-  "For small creatures such as we the vastness is bearable only through love.",
-  "There are as many atoms in a single molecule of your DNA as there are stars in the typical galaxy.",
-  "Imagination will often carry us to worlds that never were, but without it we go nowhere.",
-  "Every one of us is, in the cosmic perspective, precious.",
-  "The universe is a pretty big place. If it's just us, seems like an awful waste of space."
+  "Tor naak er futoi charger lagiye debo.",
+  "Sedin tor chokh ulte gechilo",
+  "Always remember, You farted in English tuition.",
+  "Ektu Mathematics sekha suru kor.",
+  "You are Hunu",
+  "If the world ever treats you bad, come to me, I'll always be there for you",
+  "I believe in You",
+  "Keep Working Hard",
+  "I love You",
+  "Tui Chuchi"
 ];
 
 /**
@@ -50,7 +50,7 @@ export class SpaceBackground {
     this._initParticles(20);
 
     window.addEventListener('resize', () => this._resize());
-    
+
     // Interactive alien ships click handler
     this.canvas.addEventListener('click', (e) => this._handleCanvasClick(e));
   }
@@ -486,10 +486,11 @@ export class SpaceBackground {
     const variant = Math.floor(Math.random() * 3); // 0=saucer, 1=angular, 2=dart
 
     const [h, e, l] = [palette.hull, palette.engine, palette.light];
-    this.alienShips.push({ x, y, vx, vy, angle: shipAngle, size, variant,
+    this.alienShips.push({
+      x, y, vx, vy, angle: shipAngle, size, variant,
       // Pre-baked color strings
       hullFill: `rgb(${h[0]},${h[1]},${h[2]})`,
-      hullLight: `rgb(${Math.min(255,h[0]+60)},${Math.min(255,h[1]+60)},${Math.min(255,h[2]+60)})`,
+      hullLight: `rgb(${Math.min(255, h[0] + 60)},${Math.min(255, h[1] + 60)},${Math.min(255, h[2] + 60)})`,
       engineStr: `${e[0]},${e[1]},${e[2]}`,
       lightStr: `${l[0]},${l[1]},${l[2]}`,
       blinkPhase: Math.random() * Math.PI * 2,
