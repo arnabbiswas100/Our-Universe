@@ -227,6 +227,18 @@ export class AudioManager {
     return track || { id: this.currentTrackId, title: this.currentTrackId };
   }
 
+  getPlaybackProgress() {
+    const track = this.tracks[this.currentTrackId];
+    if (!track || !track.duration) return 0;
+    return (track.currentTime / track.duration) * 100;
+  }
+
+  setPlaybackProgress(percent) {
+    const track = this.tracks[this.currentTrackId];
+    if (!track || !track.duration) return;
+    track.currentTime = track.duration * (percent / 100);
+  }
+
   /** Dispose all tracks */
   dispose() {
     Object.entries(this._fadeIntervals).forEach(([, interval]) => clearInterval(interval));

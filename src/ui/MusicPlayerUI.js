@@ -12,8 +12,8 @@ export class MusicPlayerUI {
     this.playBtn = document.getElementById('music-play');
     this.prevBtn = document.getElementById('music-prev');
     this.nextBtn = document.getElementById('music-next');
-    this.expandBtn = document.getElementById('music-expand');
     this.playlistContainer = document.getElementById('music-playlist');
+    this.header = this.container.querySelector('.music-player-header');
     
     this.isExpanded = false;
     this.isVisualizing = false;
@@ -59,8 +59,19 @@ export class MusicPlayerUI {
       this.audioManager.playPrev();
     });
     
-    this.expandBtn.addEventListener('click', () => {
+    this.header.addEventListener('click', (e) => {
+      // Don't expand if clicking play, prev, next buttons
+      if (e.target === this.playBtn || e.target === this.prevBtn || e.target === this.nextBtn) {
+        return;
+      }
       this.toggleExpand();
+    });
+    
+    // Close playlist if clicking outside the widget
+    document.addEventListener('click', (e) => {
+      if (this.isExpanded && !this.container.contains(e.target)) {
+        this.toggleExpand();
+      }
     });
   }
   

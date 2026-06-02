@@ -10,8 +10,18 @@
     "file": "/audio/era1.mp3"
   },
   {
-    "id": "ElevenLabs_Cyber_Shogun",
-    "title": "ElevenLabs Cyber Shogun",
-    "file": "/audio/EraMusicPlaylist/ElevenLabs_Cyber_Shogun.mp3"
+    "id": "Hitotsume wa ",
+    "title": "Hitotsume wa ",
+    "file": "/audio/EraMusicPlaylist/Hitotsume wa .mp3"
+  },
+  {
+    "id": "Hitotsume wa ai Hindi Doraemon",
+    "title": "Hitotsume wa ai Hindi Doraemon",
+    "file": "/audio/EraMusicPlaylist/Hitotsume wa ai Hindi Doraemon.mp3"
+  },
+  {
+    "id": "Shounen Ki Doraemon",
+    "title": "Shounen Ki Doraemon",
+    "file": "/audio/EraMusicPlaylist/Shounen Ki Doraemon.mp3"
   }
 ]
