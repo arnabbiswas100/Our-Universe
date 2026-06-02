@@ -168,6 +168,12 @@ export class PlanetMap {
         if (this._paused) return;
         gsap.to(node.querySelector('.ss-planet-body'), {
           scale: 1.18,
+          boxShadow: `
+            0 0 ${sizePx * 0.75}px ${atmosCol}bb,
+            0 0 ${sizePx * 1.5}px ${atmosCol}45,
+            inset -${sizePx * 0.1}px -${sizePx * 0.08}px ${sizePx * 0.15}px rgba(0,0,0,0.4),
+            inset ${sizePx * 0.04}px ${sizePx * 0.04}px ${sizePx * 0.06}px rgba(255,255,255,0.25)
+          `,
           duration: 0.25,
           ease: 'power2.out',
         });
@@ -179,6 +185,12 @@ export class PlanetMap {
       node.addEventListener('mouseleave', () => {
         gsap.to(node.querySelector('.ss-planet-body'), {
           scale: 1,
+          boxShadow: `
+            0 0 ${sizePx * 0.4}px ${atmosCol}60,
+            0 0 ${sizePx * 0.8}px ${atmosCol}20,
+            inset -${sizePx * 0.1}px -${sizePx * 0.08}px ${sizePx * 0.15}px rgba(0,0,0,0.4),
+            inset ${sizePx * 0.04}px ${sizePx * 0.04}px ${sizePx * 0.06}px rgba(255,255,255,0.25)
+          `,
           duration: 0.25,
           ease: 'power2.out',
         });

@@ -1,0 +1,17 @@
+[
+  {
+    "id": "galaxy",
+    "title": "Galaxy Ambient",
+    "file": "/audio/overall.mp3"
+  },
+  {
+    "id": "era1",
+    "title": "Childhood Era",
+    "file": "/audio/era1.mp3"
+  },
+  {
+    "id": "ElevenLabs_Cyber_Shogun",
+    "title": "ElevenLabs Cyber Shogun",
+    "file": "/audio/EraMusicPlaylist/ElevenLabs_Cyber_Shogun.mp3"
+  }
+]

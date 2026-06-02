@@ -66,7 +66,23 @@
       <span class="nav-back-text">Back</span>
     </button>
     <span id="nav-location"></span>
-    <button id="nav-mute">🔊</button>
+    <div id="music-player" class="music-player-collapsed">
+      <div class="music-player-header">
+        <canvas id="music-visualizer" width="100" height="30"></canvas>
+        <div class="music-track-info">
+          <div id="music-title">Galaxy Ambient</div>
+        </div>
+        <div class="music-controls">
+          <button id="music-prev" class="music-btn">⏮</button>
+          <button id="music-play" class="music-btn">⏸</button>
+          <button id="music-next" class="music-btn">⏭</button>
+          <button id="music-expand" class="music-btn">☰</button>
+        </div>
+      </div>
+      <div id="music-playlist" class="music-playlist-hidden">
+        <!-- Playlist items injected here -->
+      </div>
+    </div>
   </div>
 
   <script type="module" src="/src/main.js"></script>

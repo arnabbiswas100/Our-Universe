@@ -7,20 +7,11 @@ export class NavigationUI {
   constructor() {
     this.container = document.getElementById('nav-ui');
     this.backBtn = document.getElementById('nav-back');
-    this.muteBtn = document.getElementById('nav-mute');
     this.locationLabel = document.getElementById('nav-location');
     this.onBack = null;
-    this.onMute = null;
 
     this.backBtn.addEventListener('click', () => {
       if (this.onBack) this.onBack();
-    });
-
-    this.muteBtn.addEventListener('click', () => {
-      if (this.onMute) {
-        const muted = this.onMute();
-        this.muteBtn.textContent = muted ? '🔇' : '🔊';
-      }
     });
 
     this.locationLabel.addEventListener('click', (e) => {

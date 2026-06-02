@@ -13,6 +13,7 @@ import { LoadingScreen } from './ui/LoadingScreen.js';
 import { LandingScreen } from './ui/LandingScreen.js';
 import { StoryOverlay } from './ui/StoryOverlay.js';
 import { NavigationUI } from './ui/NavigationUI.js';
+import { MusicPlayerUI } from './ui/MusicPlayerUI.js';
 import { warpTransition } from './utils/animations.js';
 
 // ── Custom Space Cursor ──────────────────────────────────────────
@@ -44,7 +45,7 @@ class CursorController {
     // Hover detection — covers all interactive elements
     const HOVER_SEL = 'a, button, [role="button"], input, select, textarea, label, '
       + '.bh-era-node, .ss-planet-node, .bh-monitor, .bh-astronaut-wrap, '
-      + '.landing-begin, .story-close, #nav-back, #nav-mute, .era-desc-enter, '
+      + '.landing-begin, .story-close, #nav-back, .era-desc-enter, .music-btn, .playlist-item, '
       + '[style*="cursor: pointer"], [style*="cursor:pointer"]';
 
     document.addEventListener('mouseover', (e) => {
@@ -123,13 +124,13 @@ class OurUniverse {
     this.landingScreen = new LandingScreen();
     this.storyOverlay = new StoryOverlay();
     this.navUI = new NavigationUI();
+    this.musicPlayerUI = new MusicPlayerUI(this.audioManager);
 
     // Landing → Begin
     this.landingScreen.onBegin = () => this._onBegin();
 
     // Nav controls
     this.navUI.onBack = () => this._onNavBack();
-    this.navUI.onMute = () => this.audioManager.toggleMute();
   }
 
   _initMaps() {

@@ -10,6 +10,13 @@ export class AudioManager {
     this.isMuted = false;
     this.masterVolume = 0.6;
     this._fadeIntervals = {};
+    
+    // Playlist and Web Audio API
+    this.playlist = [];
+    this.audioCtx = null;
+    this.analyser = null;
+    this.masterGain = null;
+    this.freqData = null;
   }
 
   /** Load an audio track by id and src */
@@ -36,6 +43,8 @@ export class AudioManager {
     const track = this.tracks[id];
     if (!track) return;
 
+    this._initWebAudio(id); // Ensure Web Audio API is initialized
+
     // Stop current track if different
     if (this.currentTrackId && this.currentTrackId !== id) {
       this.fadeOut(this.currentTrackId, fadeIn);
@@ -53,6 +62,10 @@ export class AudioManager {
 
     this._fade(id, 0, this.masterVolume, fadeIn * 1000);
     this.currentTrackId = id;
+    
+    if (this.onTrackChange) {
+      this.onTrackChange(id);
+    }
   }
 
   /** Fade out a track and stop it */
@@ -120,6 +133,100 @@ export class AudioManager {
     }
   }
 
+  // ── Web Audio API & Playlist Methods ──
+
+  _initWebAudio(trackId) {
+    if (!this.audioCtx) {
+      const AudioContext = window.AudioContext || window.webkitAudioContext;
+      this.audioCtx = new AudioContext();
+      this.analyser = this.audioCtx.createAnalyser();
+      this.analyser.fftSize = 128; // gives 64 frequency bins
+      this.freqData = new Uint8Array(this.analyser.frequencyBinCount);
+      
+      this.masterGain = this.audioCtx.createGain();
+      this.masterGain.connect(this.analyser);
+      this.analyser.connect(this.audioCtx.destination);
+    }
+    
+    if (this.audioCtx.state === 'suspended') {
+      this.audioCtx.resume();
+    }
+    
+    // Connect track to masterGain if not already connected
+    const track = this.tracks[trackId];
+    if (track && !track._connectedToWebAudio) {
+      try {
+        const source = this.audioCtx.createMediaElementSource(track);
+        source.connect(this.masterGain);
+        track._connectedToWebAudio = true;
+      } catch (e) {
+        console.warn('Failed to connect WebAudio for track', trackId, e);
+      }
+    }
+  }
+
+  getFrequencyData() {
+    if (!this.analyser || !this.freqData) return null;
+    this.analyser.getByteFrequencyData(this.freqData);
+    return this.freqData;
+  }
+
+  async loadPlaylist(url) {
+    try {
+      const res = await fetch(url);
+      const data = await res.json();
+      this.playlist = data; // Array of { id, title, file }
+      for (const item of data) {
+        await this.load(item.id, item.file);
+      }
+      return this.playlist;
+    } catch (e) {
+      console.warn('Failed to load playlist from', url, e);
+      return [];
+    }
+  }
+
+  playNext() {
+    if (!this.playlist || this.playlist.length === 0) return;
+    const currentIndex = this.playlist.findIndex(t => t.id === this.currentTrackId);
+    let nextIndex = currentIndex + 1;
+    if (nextIndex >= this.playlist.length || nextIndex < 0) nextIndex = 0;
+    this.crossfade(this.currentTrackId, this.playlist[nextIndex].id, 1.5);
+  }
+
+  playPrev() {
+    if (!this.playlist || this.playlist.length === 0) return;
+    const currentIndex = this.playlist.findIndex(t => t.id === this.currentTrackId);
+    let prevIndex = currentIndex - 1;
+    if (prevIndex < 0) prevIndex = this.playlist.length - 1;
+    this.crossfade(this.currentTrackId, this.playlist[prevIndex].id, 1.5);
+  }
+
+  togglePlayPause() {
+    const track = this.tracks[this.currentTrackId];
+    if (!track) return false;
+    
+    if (track.paused) {
+      this.play(this.currentTrackId, 0.5); // Quick fade in
+      return true;
+    } else {
+      this.fadeOut(this.currentTrackId, 0.5);
+      // Wait for fadeout before pausing it internally handled by fadeOut
+      return false;
+    }
+  }
+
+  isPlaying() {
+    const track = this.tracks[this.currentTrackId];
+    return track ? !track.paused : false;
+  }
+
+  getCurrentTrackInfo() {
+    if (!this.currentTrackId) return null;
+    const track = this.playlist.find(t => t.id === this.currentTrackId);
+    return track || { id: this.currentTrackId, title: this.currentTrackId };
+  }
+
   /** Dispose all tracks */
   dispose() {
     Object.entries(this._fadeIntervals).forEach(([, interval]) => clearInterval(interval));
@@ -128,5 +235,9 @@ export class AudioManager {
       if (t) { t.pause(); t.src = ''; }
     });
     this.tracks = {};
+    if (this.audioCtx) {
+      this.audioCtx.close();
+      this.audioCtx = null;
+    }
   }
 }

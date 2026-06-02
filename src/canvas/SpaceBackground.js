@@ -30,10 +30,17 @@ export class SpaceBackground {
     this.alienShips = [];
     this.nebulaClouds = [];
     this.particles = [];
+    this.constellations = [];
     this.time = 0;
     this.running = false;
     this._dpr = Math.min(window.devicePixelRatio, 2);
     this._lastTimestamp = 0;
+
+    // Mouse tracking & parallax
+    this.mouseX = window.innerWidth / 2;
+    this.mouseY = window.innerHeight / 2;
+    this.paraX = 0;
+    this.paraY = 0;
 
     // Offscreen canvas for static star layer (redrawn ~2fps)
     this._starCanvas = document.createElement('canvas');
@@ -46,10 +53,16 @@ export class SpaceBackground {
 
     this._resize();
     this._initStars(250);
+    this._initConstellations(5);
     this._initNebulaClouds(4);
     this._initParticles(20);
 
     window.addEventListener('resize', () => this._resize());
+    
+    window.addEventListener('mousemove', (e) => {
+      this.mouseX = e.clientX;
+      this.mouseY = e.clientY;
+    });
 
     // Interactive alien ships click handler
     this.canvas.addEventListener('click', (e) => this._handleCanvasClick(e));
@@ -87,9 +100,9 @@ export class SpaceBackground {
     this.canvas.style.width = this.w + 'px';
     this.canvas.style.height = this.h + 'px';
     this.ctx.scale(this._dpr, this._dpr);
-    // Resize offscreen star canvas
-    this._starCanvas.width = this.canvas.width;
-    this._starCanvas.height = this.canvas.height;
+    // Resize offscreen star canvas (slightly larger for parallax)
+    this._starCanvas.width = (this.w + 80) * this._dpr;
+    this._starCanvas.height = (this.h + 80) * this._dpr;
     this._starCtx.scale(this._dpr, this._dpr);
     this._starDirty = true;
   }
@@ -101,14 +114,59 @@ export class SpaceBackground {
       const g = Math.round(180 + Math.random() * 75);
       const b = Math.round(200 + Math.random() * 55);
       this.stars.push({
-        x: Math.random() * this.w,
-        y: Math.random() * this.h,
+        x: -40 + Math.random() * (this.w + 80),
+        y: -40 + Math.random() * (this.h + 80),
         radius: Math.random() * 1.8 + 0.3,
         baseAlpha: Math.random() * 0.6 + 0.2,
         twinkleSpeed: Math.random() * 2 + 0.5,
         twinklePhase: Math.random() * Math.PI * 2,
         colorBase: `${r},${g},${b}`, // pre-baked color string
       });
+    }
+  }
+
+  _initConstellations(count) {
+    this.constellations = [];
+    // Only use the largest/brightest stars for constellations
+    const brightStars = this.stars.filter(s => s.radius > 1.2);
+    if (brightStars.length < 10) return;
+
+    for (let i = 0; i < count; i++) {
+      const numPoints = 4 + Math.floor(Math.random() * 4);
+      let points = [];
+      let currentStar = brightStars[Math.floor(Math.random() * brightStars.length)];
+      points.push(currentStar);
+
+      for (let j = 1; j < numPoints; j++) {
+        // Find nearest star not already in points
+        let nearest = null;
+        let minDist = Infinity;
+        for (const star of brightStars) {
+          if (points.includes(star)) continue;
+          const dx = star.x - currentStar.x;
+          const dy = star.y - currentStar.y;
+          const dist = dx * dx + dy * dy;
+          // Prefer stars that are somewhat close but not exactly on top
+          if (dist > 1000 && dist < minDist && dist < 40000) {
+            minDist = dist;
+            nearest = star;
+          }
+        }
+        if (nearest) {
+          points.push(nearest);
+          currentStar = nearest;
+        } else {
+          break;
+        }
+      }
+
+      if (points.length >= 3) {
+        this.constellations.push({
+          points,
+          alphaPhase: Math.random() * Math.PI * 2,
+          speed: 0.15 + Math.random() * 0.2
+        });
+      }
     }
   }
 
@@ -191,11 +249,20 @@ export class SpaceBackground {
     this._lastTimestamp = timestamp;
     this.time += dt;
 
+    // Smoothly interpolate parallax offsets (max 2% shift)
+    const targetParaX = (this.mouseX - this.w / 2) * -0.02;
+    const targetParaY = (this.mouseY - this.h / 2) * -0.02;
+    this.paraX += (targetParaX - this.paraX) * 0.08;
+    this.paraY += (targetParaY - this.paraY) * 0.08;
+
     const ctx = this.ctx;
 
     // Background solid fill
     ctx.fillStyle = '#0C1035';
     ctx.fillRect(0, 0, this.w, this.h);
+
+    ctx.save();
+    ctx.translate(this.paraX, this.paraY);
 
     // Nebula clouds
     this._drawNebulaClouds(ctx, dt);
@@ -207,10 +274,15 @@ export class SpaceBackground {
       this._starRedrawTimer = 0;
       this._starDirty = false;
     }
-    ctx.drawImage(this._starCanvas, 0, 0, this.w, this.h);
+    ctx.drawImage(this._starCanvas, -40, -40, this.w + 80, this.h + 80);
+
+    // Procedural Constellations
+    this._drawConstellations(ctx, dt);
 
     // Floating particles
     this._drawParticles(ctx, dt);
+
+    ctx.restore();
 
     // Alien ships
     this._drawAlienShips(ctx, dt);
@@ -249,6 +321,22 @@ export class SpaceBackground {
       cloud.x += cloud.driftX;
       cloud.y += cloud.driftY;
 
+      // Interactive Nebula Displacement (swirl away from cursor)
+      if (this.mouseX !== undefined && this.mouseY !== undefined) {
+        // Adjust for parallax translation so mouse interaction feels correct
+        const mdx = this.mouseX - (cloud.x + this.paraX);
+        const mdy = this.mouseY - (cloud.y + this.paraY);
+        const mDistSq = mdx * mdx + mdy * mdy;
+        const repulseRadius = 350;
+        
+        if (mDistSq < repulseRadius * repulseRadius && mDistSq > 1) {
+          const dist = Math.sqrt(mDistSq);
+          const force = (repulseRadius - dist) / repulseRadius;
+          cloud.x -= (mdx / dist) * force * 2.5;
+          cloud.y -= (mdy / dist) * force * 2.5;
+        }
+      }
+
       if (cloud.x < -cloud.radius) cloud.x = this.w + cloud.radius;
       if (cloud.x > this.w + cloud.radius) cloud.x = -cloud.radius;
       if (cloud.y < -cloud.radius) cloud.y = this.h + cloud.radius;
@@ -279,7 +367,7 @@ export class SpaceBackground {
   /** Render stars onto the offscreen canvas (called ~4fps) */
   _renderStarsOffscreen() {
     const sctx = this._starCtx;
-    sctx.clearRect(0, 0, this.w, this.h);
+    sctx.clearRect(0, 0, this.w + 80, this.h + 80);
 
     for (const star of this.stars) {
       const twinkle = Math.sin(this.time * star.twinkleSpeed + star.twinklePhase);
@@ -287,16 +375,37 @@ export class SpaceBackground {
       if (alpha <= 0) continue;
 
       sctx.beginPath();
-      sctx.arc(star.x, star.y, star.radius, 0, Math.PI * 2);
+      sctx.arc(star.x + 40, star.y + 40, star.radius, 0, Math.PI * 2);
       sctx.fillStyle = `rgba(${star.colorBase},${Math.min(1, alpha).toFixed(2)})`;
       sctx.fill();
 
       if (star.radius > 1.4) {
         sctx.beginPath();
-        sctx.arc(star.x, star.y, star.radius * 2.5, 0, Math.PI * 2);
+        sctx.arc(star.x + 40, star.y + 40, star.radius * 2.5, 0, Math.PI * 2);
         sctx.fillStyle = `rgba(${star.colorBase},${(alpha * 0.06).toFixed(3)})`;
         sctx.fill();
       }
+    }
+  }
+
+  _drawConstellations(ctx, dt) {
+    ctx.lineWidth = 0.5;
+    
+    for (const c of this.constellations) {
+      // Slow sine wave fade in and out
+      const fade = Math.sin(this.time * c.speed + c.alphaPhase);
+      if (fade <= 0) continue; // Only draw when positive (faded in)
+      
+      const alpha = (fade * 0.35).toFixed(3); // Max opacity 0.35
+      ctx.strokeStyle = `rgba(200, 220, 255, ${alpha})`;
+      ctx.beginPath();
+      
+      for (let i = 0; i < c.points.length; i++) {
+        const p = c.points[i];
+        if (i === 0) ctx.moveTo(p.x, p.y);
+        else ctx.lineTo(p.x, p.y);
+      }
+      ctx.stroke();
     }
   }
 

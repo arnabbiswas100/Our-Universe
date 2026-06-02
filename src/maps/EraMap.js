@@ -16,11 +16,23 @@ export class EraMap {
     this.nodes = [];
     this.orbitTweens = [];
     this.built = false;
+
+    this._handleMouseMove = (e) => {
+      this.mouseX = e.clientX;
+      this.mouseY = e.clientY;
+    };
+
+    // Sluggish cursor state
+    this._cursor = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+    this._gravityTick = () => this._updateGravityCursor();
   }
 
   async enter() {
     this.container.style.display = 'block';
     this.container.style.opacity = '0';
+    
+    window.addEventListener('mousemove', this._handleMouseMove);
+    gsap.ticker.add(this._gravityTick);
 
     // Always rebuild for a fresh state
     this.nodesContainer.innerHTML = '';
@@ -38,6 +50,50 @@ export class EraMap {
 
     // Start orbits
     this._startOrbits();
+  }
+
+  _updateGravityCursor() {
+    if (!this.gravityCursor || this.mouseX === undefined) return;
+    
+    const cx = window.innerWidth / 2;
+    const cy = window.innerHeight / 2;
+    const dx = this.mouseX - cx;
+    const dy = this.mouseY - cy;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    const vMin = Math.min(window.innerWidth, window.innerHeight);
+    
+    // The first orbit is at vMin * 0.14. Let's make the gravity well slightly larger.
+    const gravityWell = vMin * 0.16;
+
+    if (dist < gravityWell && !this._warping) {
+      // Hide native cursor, show custom cursor
+      document.body.style.cursor = 'none';
+      if (this.gravityCursor.style.opacity === '0') {
+        gsap.to(this.gravityCursor, { opacity: 1, duration: 0.2 });
+        // Snap to real mouse initially
+        this._cursor.x = this.mouseX;
+        this._cursor.y = this.mouseY;
+      }
+      
+      // Calculate lerp factor (sluggishness). 
+      // Closer to center = smaller lerp = more sluggish.
+      // E.g., at edge of well it's 0.2 (normal-ish), at center it's 0.02 (very slow)
+      const lerp = 0.015 + Math.pow(dist / gravityWell, 2) * 0.15;
+      
+      this._cursor.x += (this.mouseX - this._cursor.x) * lerp;
+      this._cursor.y += (this.mouseY - this._cursor.y) * lerp;
+      
+      this.gravityCursor.style.transform = `translate(${this._cursor.x}px, ${this._cursor.y}px)`;
+    } else {
+      // Restore native cursor, hide custom cursor
+      if (this.gravityCursor.style.opacity !== '0') {
+        document.body.style.cursor = 'auto';
+        gsap.to(this.gravityCursor, { opacity: 0, duration: 0.2 });
+      }
+      // Keep tracking real mouse so it doesn't snap wildly upon entering
+      this._cursor.x = this.mouseX;
+      this._cursor.y = this.mouseY;
+    }
   }
 
   _buildBlackHoleSystem() {
@@ -87,6 +143,18 @@ export class EraMap {
         width: ${bhSize * 1.6}px;
         height: ${bhSize * 1.6}px;
       "></div>
+      
+      <!-- Accretion Disk Solar Flares -->
+      <div class="bh-flare-arm" style="animation: flareOrbit 1.2s linear infinite; animation-delay: -0.5s;">
+        <div class="bh-flare" style="--r: ${bhSize * 0.75}px; animation: flarePulse 2.2s ease-in-out infinite;"></div>
+      </div>
+      <div class="bh-flare-arm" style="animation: flareOrbit 0.8s linear infinite reverse; animation-delay: -0.2s;">
+        <div class="bh-flare" style="--r: ${bhSize * 0.85}px; animation: flarePulse 1.8s ease-in-out infinite 0.7s; background: #60a5fa; box-shadow: 0 0 10px 3px #60a5fa, 0 0 15px 5px #3b82f6;"></div>
+      </div>
+      <div class="bh-flare-arm" style="animation: flareOrbit 1.5s linear infinite; animation-delay: -1.1s;">
+        <div class="bh-flare" style="--r: ${bhSize * 0.9}px; animation: flarePulse 2.7s ease-in-out infinite 1.2s;"></div>
+      </div>
+
       <!-- Warp vortex ring (shown on click) -->
       <div class="bh-warp-ring" style="width:${bhSize * 4}px;height:${bhSize * 4}px;"></div>
     `;
@@ -128,6 +196,12 @@ export class EraMap {
     });
     
     this.nodesContainer.appendChild(astronautWrap);
+
+    // ── Gravity Cursor ──
+    this.gravityCursor = document.createElement('div');
+    this.gravityCursor.className = 'bh-gravity-cursor';
+    this.gravityCursor.style.opacity = '0'; // Hidden by default
+    document.body.appendChild(this.gravityCursor);
 
     // ── Space Station Monitor (bottom-left) ──
     const monitor = document.createElement('div');
@@ -275,6 +349,7 @@ export class EraMap {
         ring,
         startAngle,
         orbitDuration,
+        orbitRadius, // Needed for lensing math
       });
     });
 
@@ -611,6 +686,9 @@ export class EraMap {
               </linearGradient>
             </defs>
           </svg>
+          <div class="bh-monitor-log-container">
+            <div class="bh-monitor-log" id="bh-log">SYSTEMS NOMINAL</div>
+          </div>
         </div>
       </div>
     `;
@@ -626,6 +704,19 @@ export class EraMap {
     const dayEl = monitorEl.querySelector('#bh-day');
     const graphLine = monitorEl.querySelector('#bh-graph-line');
     const graphFill = monitorEl.querySelector('#bh-graph-fill');
+    const logEl = monitorEl.querySelector('#bh-log');
+
+    const logs = [
+      "Log 1084: Attempted gravity-free cooking. Pasta on ceiling.",
+      "Log 1085: Solar panels dusty. Wiggling station.",
+      "Log 1086: Space cat chased a floating water bubble.",
+      "Log 1087: Missing screw in sector 4. Oh well.",
+      "Log 1088: Aliens requested our WiFi password again.",
+      "Log 1089: Arnab is sleeping on the control panel.",
+      "Log 1090: Coffee machine achieved sentience. It's depressed."
+    ];
+    let logIndex = 0;
+    let logTimer = 0;
 
     const update = () => {
       const now = new Date();
@@ -655,6 +746,17 @@ export class EraMap {
       if (graphLine) graphLine.setAttribute('d', pathD);
       // Fill area (close the path at the bottom)
       if (graphFill) graphFill.setAttribute('d', `${pathD} L 160,40 L 0,40 Z`);
+
+      // Update log
+      if (logEl) {
+        logTimer++;
+        if (logTimer > 8) {
+          logTimer = 0;
+          logIndex = (logIndex + 1) % logs.length;
+          gsap.fromTo(logEl, { opacity: 0, y: 5 }, { opacity: 0.8, y: 0, duration: 0.5 });
+          logEl.textContent = logs[logIndex];
+        }
+      }
     };
 
     update();
@@ -669,6 +771,13 @@ export class EraMap {
   }
 
   async exit() {
+    window.removeEventListener('mousemove', this._handleMouseMove);
+    gsap.ticker.remove(this._gravityTick);
+    if (this.gravityCursor) {
+      this.gravityCursor.remove();
+      this.gravityCursor = null;
+    }
+    document.body.style.cursor = 'auto';
     this._killOrbits();
     this._stopMonitor();
     this._warping = false;
